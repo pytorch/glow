@@ -189,7 +189,7 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     cd /tmp
     python3.9 -m virtualenv venv
     source venv/bin/activate
-    pip install black==20.8b1
+    pip install black==22.3.0
     cd ${GLOW_DIR}
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch

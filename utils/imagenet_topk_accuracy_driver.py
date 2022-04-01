@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # Copyright (c) Glow Contributors. See CONTRIBUTORS file.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -167,7 +167,9 @@ def resize_and_save_image(img_path, path_to_new_img):
 
 def save_centered_cropped_dataset(validation_images_dir):
     processed_validation_images_dir = os.path.join(validation_images_dir, "processed")
-    print "Saving centered cropped input images: %s" % (processed_validation_images_dir)
+    print(
+        "Saving centered cropped input images: %s" % (processed_validation_images_dir)
+    )
 
     img_subdirs = get_sorted_img_subdirs(validation_images_dir)
 
@@ -213,7 +215,7 @@ def get_curr_img_paths(
     img_paths, img_index, batch_size, tmp_dir_name, resize_input_images
 ):
     curr_img_paths = []
-    for batch_idx in xrange(batch_size):
+    for batch_idx in range(batch_size):
         img_path = img_paths[img_index + batch_idx]
         # If we are resizing the image then we are going to save it to a
         # temp location to read in later for inference.
@@ -258,8 +260,8 @@ def verify_spawn_cmd(image_classifier_cmd):
 def print_topk_accuracy(total_image_count, top1_count, top5_count):
     top1_accuracy = float(top1_count) / float(total_image_count)
     top5_accuracy = float(top5_count) / float(total_image_count)
-    print "\tTop-1 accuracy: " + "{0:.4f}".format(top1_accuracy)
-    print "\tTop-5 accuracy: " + "{0:.4f}".format(top5_accuracy)
+    print("\tTop-1 accuracy: " + "{0:.4f}".format(top1_accuracy))
+    print("\tTop-5 accuracy: " + "{0:.4f}".format(top5_accuracy))
 
 
 # Calculates and prints top-1 and top-5 accuracy for images located in
@@ -274,7 +276,7 @@ def calculate_top_k(
     resize_input_images,
     verbose,
 ):
-    print "Calculating Top-1 and Top-5 accuracy..."
+    print("Calculating Top-1 and Top-5 accuracy...")
 
     verify_spawn_cmd(image_classifier_cmd)
 
@@ -287,74 +289,76 @@ def calculate_top_k(
     ), "Total number of images must be divisible by batch size"
 
     if verbose:
-        print "Running image classifier with: " + image_classifier_cmd
+        print("Running image classifier with: " + image_classifier_cmd)
 
     try:
         # Create a temporary directory to store the transformed image we
         # classify (if applicable) and the log of image-classifer output.
         tmp_dir_name = tempfile.mkdtemp()
         path_to_tmp_log = os.path.join(tmp_dir_name, "log.txt")
-        fout = file(path_to_tmp_log, "w")
-
-        classifier_proc = pexpect.spawn(
-            image_classifier_cmd, logfile=fout, timeout=None
-        )
-
-        if verbose:
-            print "Temp log located at: " + path_to_tmp_log
-
-        prompt = "Enter image filenames to classify: "
-        top1_count = 0
-        top5_count = 0
-
-        # Process the images in batches as specified on the command line.
-        for img_index in xrange(0, total_image_count, batch_size):
-            curr_img_paths = get_curr_img_paths(
-                img_paths, img_index, batch_size, tmp_dir_name, resize_input_images
+        with open(path_to_tmp_log, "w") as fout:
+            classifier_proc = pexpect.spawn(
+                image_classifier_cmd, logfile=fout, timeout=None
             )
 
-            # Expect prompt from the image-classifier for the next image path.
-            classifier_proc.expect(prompt)
+            if verbose:
+                print("Temp log located at: " + path_to_tmp_log)
 
-            appended_paths = " ".join(curr_img_paths)
-            assert (
-                len(appended_paths) <= 1024
-            ), "Line length is too long (max 1024): %r" % len(appended_paths)
+            prompt = "Enter image filenames to classify: "
+            top1_count = 0
+            top5_count = 0
 
-            # Send the paths to the image-classifier.
-            classifier_proc.sendline(appended_paths)
-
-            for batch_idx in xrange(batch_size):
-                # Now we expect the image-classifier's response with the label.
-                # The first line will include the path to the file, e.g.:
-                #  File: tests/images/imagenet/cat_285.png
-                classifier_proc.expect(" File: " + curr_img_paths[batch_idx])
-
-                # All labels will be formatted like:
-                # Label-K1: 281 (probability: 0.7190)
-                top5_labels = []
-                for _ in xrange(5):
-                    label_and_prob = classifier_proc.readline()
-                    # Get the label from the line.
-                    label = label_and_prob.split()[1]
-                    top5_labels.append(int(label))
-
-                expected_label = img_labels[img_index + batch_idx]
-                if expected_label == top5_labels[0]:
-                    top1_count += 1
-                if expected_label in top5_labels:
-                    top5_count += 1
-
-            curr_completed_count = img_index + batch_size
-            if curr_completed_count % 100 == 0:
-                print "Finished image index %d out of %d" % (
-                    (curr_completed_count, total_image_count)
+            # Process the images in batches as specified on the command line.
+            for img_index in range(0, total_image_count, batch_size):
+                curr_img_paths = get_curr_img_paths(
+                    img_paths, img_index, batch_size, tmp_dir_name, resize_input_images
                 )
-                if verbose:
-                    print "  Current Top-1/5 accuracy:"
-                    print_topk_accuracy(curr_completed_count, top1_count, top5_count)
-                else:
-                    print ""
+
+                # Expect prompt from the image-classifier for the next image path.
+                classifier_proc.expect(prompt)
+
+                appended_paths = " ".join(curr_img_paths)
+                assert (
+                    len(appended_paths) <= 1024
+                ), "Line length is too long (max 1024): %r" % len(appended_paths)
+
+                # Send the paths to the image-classifier.
+                classifier_proc.sendline(appended_paths)
+
+                for batch_idx in range(batch_size):
+                    # Now we expect the image-classifier's response with the label.
+                    # The first line will include the path to the file, e.g.:
+                    #  File: tests/images/imagenet/cat_285.png
+                    classifier_proc.expect(" File: " + curr_img_paths[batch_idx])
+
+                    # All labels will be formatted like:
+                    # Label-K1: 281 (probability: 0.7190)
+                    top5_labels = []
+                    for _ in range(5):
+                        label_and_prob = classifier_proc.readline()
+                        # Get the label from the line.
+                        label = label_and_prob.split()[1]
+                        top5_labels.append(int(label))
+
+                    expected_label = img_labels[img_index + batch_idx]
+                    if expected_label == top5_labels[0]:
+                        top1_count += 1
+                    if expected_label in top5_labels:
+                        top5_count += 1
+
+                curr_completed_count = img_index + batch_size
+                if curr_completed_count % 100 == 0:
+                    print(
+                        "Finished image index %d out of %d"
+                        % ((curr_completed_count, total_image_count))
+                    )
+                    if verbose:
+                        print("  Current Top-1/5 accuracy:")
+                        print_topk_accuracy(
+                            curr_completed_count, top1_count, top5_count
+                        )
+                    else:
+                        print("")
 
     finally:
         classifier_proc.close(force=True)
@@ -362,8 +366,9 @@ def calculate_top_k(
         # Remove the temp directory we used to save the images and log.
         shutil.rmtree(tmp_dir_name)
 
-    print "\nCompleted running; Final Top-1/5 accuracy across %d images:" % (
-        total_image_count
+    print(
+        "\nCompleted running; Final Top-1/5 accuracy across %d images:"
+        % (total_image_count)
     )
     print_topk_accuracy(total_image_count, top1_count, top5_count)
 
