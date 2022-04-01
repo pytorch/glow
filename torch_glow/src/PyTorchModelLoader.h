@@ -1003,6 +1003,10 @@ private:
   /// \returns error on failure.
   Error loadBmm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::baddbmm node.
+  /// \returns error on failure.
+  Error loadBAddBmm(const torch::jit::Node *ptNode);
+
   /// Load a glow::fused_linear node.
   /// \returns error on failure.
   Error loadGlowFusedLinear(const torch::jit::Node *ptNode);

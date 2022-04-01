@@ -904,6 +904,17 @@ struct AddMMInputs {
   };
 };
 
+/// Indexes of aten::baddbmm inputs.
+struct BAddBmmInputs {
+  enum {
+    input = 0,
+    mat1 = 1,
+    mat2 = 2,
+    beta = 3,
+    alpha = 4,
+  };
+};
+
 /// Indexes of aten::transpose inputs.
 struct TransposeInputs {
   enum {
@@ -1715,6 +1726,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::addmm"},
        &PyTorchModelLoader::loadAddMM,
+       &PyTorchModelLoader::getCorrectTypeFromInput<0>},
+      {{"aten::baddbmm"},
+       &PyTorchModelLoader::loadBAddBmm,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"aten::select"},
        &PyTorchModelLoader::loadSelect,
@@ -7081,6 +7095,73 @@ Error PyTorchModelLoader::loadBmm(const torch::jit::Node *ptNode) {
   }
 
   auto output = F_.createBatchMatMul("bmm", lhs, rhs)->getResult();
+  RETURN_ERR(addValueMapping(outputs[0], output));
+}
+
+Error PyTorchModelLoader::loadBAddBmm(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  auto getScalar = [&](const torch::jit::Value *val) -> Expected<float> {
+    if (!hasGlowIValueForValue(val)) {
+      return 1.0;
+    }
+
+    GlowIValue *ival;
+    ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(val));
+
+    if (ival->isDouble()) {
+      return ival->toDouble();
+    } else if (ival->isInt()) {
+      return static_cast_expected<float>(ival->toInt());
+    } else if (ival->isNone()) {
+      return 1.0;
+    } else {
+      return MAKE_ERR("Unexpected scalar type");
+    }
+  };
+
+  float alpha;
+  ASSIGN_VALUE_OR_RETURN_ERR(alpha, getScalar(inputs[BAddBmmInputs::alpha]));
+
+  float beta;
+  ASSIGN_VALUE_OR_RETURN_ERR(beta, getScalar(inputs[BAddBmmInputs::beta]));
+
+  if (beta != 1.0) {
+    return MAKE_ERR("beta != 1.0");
+  }
+
+  if (alpha != 1.0) {
+    return MAKE_ERR("alpha != 1.0");
+  }
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[BAddBmmInputs::input]));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[BAddBmmInputs::mat1]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rhs, getGlowNodeValueForValue(inputs[BAddBmmInputs::mat2]));
+
+  // Check dimensions of inputs
+  if (lhs.dims().size() != 3 || rhs.dims().size() != 3) {
+    return MAKE_ERR("aten::bmm expects 3D tensors");
+  }
+
+  if (lhs.dims()[2] != rhs.dims()[1]) {
+    return MAKE_ERR("aten::bmm does not broadcast");
+  }
+
+  auto mulOutput = F_.createBatchMatMul("[badd]bmm", lhs, rhs)->getResult();
+
+  auto output = F_.createNodeWithBroadcast<AddNode>("badd[bmm]", /*axis*/ -1,
+                                                    input, mulOutput)
+                    ->getNthResult(0);
+
   RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
