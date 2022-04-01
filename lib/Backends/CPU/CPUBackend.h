@@ -82,6 +82,9 @@ public:
   createIRGen(const IRFunction *IR,
               AllocationsInfo &allocationsInfo) const override;
 
+  virtual std::unique_ptr<FunctionPassPipeline>
+  getOptimizationPipeline() const override;
+
 protected:
   virtual std::unique_ptr<CompiledFunction>
   createCompiledFunction(std::unique_ptr<GlowJIT> JIT,

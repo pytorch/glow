@@ -73,6 +73,7 @@ bool CPUBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::LeakyReluNodeKind:
+  case Kinded::Kind::HardSwishNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
@@ -155,6 +156,14 @@ bool CPUBackend::canDoIndexTypeDemotion(
   precConfig.precisionModeKindSet.insert(
       Kinded::Kind::SparseToDenseMaskNodeKind);
   return fromTy == ElemKind::Int64ITy && toTy == ElemKind::Int32ITy;
+}
+
+std::unique_ptr<FunctionPassPipeline>
+CPUBackend::getOptimizationPipeline() const {
+  auto pipeline = Backend::getOptimizationPipeline();
+  pipeline->pushFront(
+      {FunctionPassID::ReplaceQuantizedHardSwishWithLookupTable});
+  return pipeline;
 }
 
 #if FACEBOOK_INTERNAL

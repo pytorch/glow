@@ -6454,6 +6454,36 @@ bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
   return changed;
 }
 
+bool ReplaceQuantizedHardSwishWithLookupTable::run(
+    Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *HSN = dyn_cast<HardSwishNode>(&N);
+    CONTINUE_IF_NOT(HSN);
+
+    // Verify that input/output quantized.
+    NodeValue input = HSN->getInput();
+    NodeValue output = HSN->getResult();
+
+    CONTINUE_IF_NOT(input.getType()->isQuantizedType())
+    CONTINUE_IF_NOT(output.getType()->isQuantizedType())
+
+    // Replace HardSwish with LUT.
+    auto hard_swish_lambda = [](float a) {
+      int x = a + 3;
+      return a * (x > 6 ? 6 : ((x < 0) ? 0 : x)) / 6;
+    };
+    auto lookupTable = F->createIntLookupTable(
+        HSN->getName(), input, hard_swish_lambda, output.getType());
+    HSN->getResult().replaceAllUsesOfWith(lookupTable);
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
 /// demotion of Index type from INT64 to INT32.
 static void transformIndexTypeDemotion(const Backend &B, Function *F,

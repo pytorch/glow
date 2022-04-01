@@ -1435,6 +1435,27 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     break;
   }
 
+  case Kinded::Kind::HardSwishInstKind: {
+    auto *HI = cast<HardSwishInst>(I);
+    auto *src = HI->getSrc();
+    auto *dest = HI->getDest();
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+
+    auto *F = getFunction("element_hard_swish", dest->getElementType());
+    llvm::CallInst *stackedOpCall = nullptr;
+    if (dest->getElementType() == ElemKind::FloatTy) {
+      stackedOpCall = createCall(builder, F, {loopCount, srcPtr});
+    } else {
+      LOG(FATAL) << "Type is not supported";
+    }
+    auto *elementTy = getElementType(builder, dest);
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
   case Kinded::Kind::ElementIsNaNInstKind: {
     auto *AN = cast<ElementIsNaNInst>(I);
     auto *src = AN->getSrc();

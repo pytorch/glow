@@ -2165,6 +2165,10 @@ void BoundInterpreterFunction::fwdLeakyReluInst(const LeakyReluInst *) {
   DCHECK(!"Found LeakyReluInst but LeakyRelu is lowered on Interpreter");
 }
 
+void BoundInterpreterFunction::fwdHardSwishInst(const HardSwishInst *) {
+  DCHECK(!"Found HardSwishInst but HardSwish is lowered on Interpreter");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdSigmoidInstFloatImpl(const SigmoidInst *I) {
   staticAssertFloatingPointType(ElemTy);
