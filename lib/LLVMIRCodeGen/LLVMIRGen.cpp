@@ -41,15 +41,15 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-static llvm::cl::opt<bool>
-    dumpIR("dump-llvm-ir",
-           llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
-           llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
-
-static llvm::cl::opt<bool>
-    dumpJitAsm("dump-llvm-asm",
-               llvm::cl::desc("Dump the textual assembly of the jitted code"),
+llvm::cl::opt<bool>
+    dumpLLVMIR("dump-llvm-ir",
+               llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
                llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
+
+llvm::cl::opt<bool>
+    dumpLLVMAsm("dump-llvm-asm",
+                llvm::cl::desc("Dump the textual assembly of the jitted code"),
+                llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
 
 llvm::cl::opt<bool>
     emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
@@ -328,7 +328,7 @@ void LLVMIRGen::performCodeGen() {
 }
 
 void LLVMIRGen::finishCodeGen() {
-  if (dumpIR) {
+  if (dumpLLVMIR) {
     llvm::outs() << "LLVM module before optimizations:\n";
     llmodule_->print(llvm::outs(), nullptr);
   }
@@ -350,12 +350,12 @@ void LLVMIRGen::finishCodeGen() {
   // Generate debug information.
   generateModuleDebugInfo();
 
-  if (dumpIR) {
+  if (dumpLLVMIR) {
     llvm::outs() << "LLVM module after optimizations:\n";
     llmodule_->print(llvm::outs(), nullptr);
   }
 
-  if (dumpJitAsm) {
+  if (dumpLLVMAsm) {
     llvm::SmallVector<char, 0> asmBuffer;
     llvm::raw_svector_ostream asmStream(asmBuffer);
     llvm::legacy::PassManager PM;

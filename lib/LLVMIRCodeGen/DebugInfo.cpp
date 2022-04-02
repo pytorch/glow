@@ -34,8 +34,6 @@ using llvm::DISubprogram;
 using llvm::dyn_cast;
 using llvm::isa;
 
-extern llvm::cl::opt<bool> emitDebugInfo;
-
 void LLVMIRGen::setCurrentDebugLocation(llvm::IRBuilder<> &builder,
                                         const glow::Instruction *I) {
   if (!emitDebugInfo)
