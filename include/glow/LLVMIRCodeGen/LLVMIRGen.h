@@ -25,10 +25,17 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+
+extern llvm::cl::opt<bool> dumpLLVMIR;
+
+extern llvm::cl::opt<bool> dumpLLVMAsm;
+
+extern llvm::cl::opt<bool> emitDebugInfo;
 
 namespace glow {
 
