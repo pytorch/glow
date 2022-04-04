@@ -17,7 +17,10 @@
 #include "glow/LLVMIRCodeGen/CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 #include "glow/Support/Debug.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/Support/Regex.h"
+#include <string>
 
 #define DEBUG_TYPE "debug-instrumentation"
 
@@ -40,6 +43,8 @@ enum FunctionInstrumentationType {
 
 /// Metadata about instrumentation.
 struct InstrumentationMetaInformation {
+  // Kernel function.
+  llvm::StringRef kernelFunc;
   // Regular expression of function.
   llvm::Regex funcReg;
   // Instrumentation style.
@@ -54,7 +59,7 @@ struct InstrumentationMetaInformation {
 /// Perform code instrumentation for selected functions.
 /// The syntax is array of sections separated by coma ",".
 /// Every section starts with function regex, then body/call clause.
-/// PE Ex: "func1*:body,func2:call[:before_func2[:after_func2]];..."
+/// PE Ex: "kernel.func1*:body,func2:call[:before_func2[:after_func2]];..."
 static llvm::cl::list<std::string> llvmIrInstrumentation(
     "llvm-code-debug-trace-instrumentation",
     llvm::cl::desc(
@@ -68,11 +73,36 @@ static llvm::cl::opt<std::string> llvmIrInstrPrintoutFuncName(
                    "signature int f(const char *)"),
     llvm::cl::init("printf"), llvm::cl::cat(getLLVMBackendCat()));
 
+llvm::cl::opt<unsigned long> llvmIrInstrDetectMemoryAccessStartAddress(
+    "llvm-detect-read-write-start-address",
+    llvm::cl::desc(
+        "Detection of accesses for memory operations, start address"),
+    llvm::cl::init(0), llvm::cl::cat(getLLVMBackendCat()));
+
+llvm::cl::opt<unsigned long> llvmIrInstrDetectMemoryAccessEndAddress(
+    "llvm-detect-read-write-end-address",
+    llvm::cl::desc("Detection of accesses for memory operations, end address"),
+    llvm::cl::init(0), llvm::cl::cat(getLLVMBackendCat()));
+
 /// Inserts code to generate logs or traces into the generated LLVM IR to make
 /// debugging easier.
 class DebugInstrumentation {
 public:
   explicit DebugInstrumentation(LLVMIRGen &irgen) : irgen_{irgen} {
+    if (auto *sa = irgen_.getModule().getGlobalVariable(
+            "detectMemoryAccessStartAddress")) {
+      sa->setInitializer(irgen_.getBuilder().getInt64(
+          llvmIrInstrDetectMemoryAccessStartAddress.getValue()));
+      sa->setConstant(true);
+    }
+
+    if (auto *ea = irgen_.getModule().getGlobalVariable(
+            "detectMemoryAccessEndAddress")) {
+      ea->setInitializer(irgen_.getBuilder().getInt64(
+          llvmIrInstrDetectMemoryAccessEndAddress.getValue()));
+      ea->setConstant(true);
+    }
+
     // Bail if there is nothing to be instrumented.
     if (llvmIrInstrumentation.empty()) {
       return;
@@ -92,18 +122,24 @@ public:
     for (auto &section : llvmIrInstrumentation) {
       llvm::SmallVector<llvm::StringRef, 4> elements;
       llvm::StringRef(section).split(elements, ":");
+
+      llvm::SmallVector<llvm::StringRef, 2> functions;
+      llvm::StringRef(elements[0]).split(functions, ".");
+
       InstrumentationMetaInformation funcToInstrument{
-          llvm::Regex(elements[0]), (elements[1] == "body" ? BODY : CALL),
-          nullptr, nullptr};
+          functions[1].empty() ? "" : functions[0],
+          functions[1].empty() ? llvm::Regex(functions[0])
+                               : llvm::Regex(functions[1]),
+          (elements[1] == "body" ? BODY : CALL), nullptr, nullptr};
 
       if (funcToInstrument.style == CALL) {
-        if (elements.size() >= 3) {
+        if (elements.size() >= 3 && elements[2] != "none") {
           funcToInstrument.callBefore =
-              irgen_.getModule().getFunction(elements[3]);
+              irgen_.getModule().getFunction(elements[2]);
           CHECK(funcToInstrument.callBefore)
-              << "Cannot find " << elements[3].data() << " function";
+              << "Cannot find " << elements[2].data() << " function";
         }
-        if (elements.size() >= 4) {
+        if (elements.size() >= 4 && elements[3] != "none") {
           funcToInstrument.callAfter =
               irgen_.getModule().getFunction(elements[3]);
           CHECK(funcToInstrument.callAfter)
@@ -131,11 +167,11 @@ public:
       bool instrumentFunctionBody = false;
       // Checking if function's body is requested to be instrumented.
       for (auto &funcToInstrument : funcsToInstrument_) {
-        if (!funcToInstrument.funcReg.match(F.getName()) ||
-            funcToInstrument.style != BODY) {
-          continue;
+        if (funcToInstrument.funcReg.match(F.getName()) &&
+            funcToInstrument.style == BODY) {
+          instrumentFunctionBody = true;
+          break;
         }
-        instrumentFunctionBody = true;
       }
 
       // Getting down to LLVM IR instruction to insert
@@ -176,21 +212,43 @@ public:
             // instruction/call name doesn't match requested set of function
             // calls to be instrumented, skipping instrumentation, otherwise
             // wrap function call in traces.
+#if LLVM_VERSION_MAJOR >= 8
+            auto *IA = llvm::dyn_cast<llvm::InlineAsm>(CI->getCalledOperand());
+#else
+            auto *IA = llvm::dyn_cast<llvm::InlineAsm>(CI->Op<-1>());
+#endif
+            auto funcName = CI->getCalledFunction() != nullptr
+                                ? CI->getCalledFunction()->getName().str()
+                                : (IA ? IA->getAsmString() : "");
+
             auto funcToInstrument = std::find_if(
                 funcsToInstrument_.begin(), funcsToInstrument_.end(),
-                [&](auto &fi) {
-                  if (CI->getCalledFunction() == nullptr ||
-                      !fi.funcReg.match(CI->getCalledFunction()->getName()) ||
-                      fi.style != CALL) {
-                    return false;
-                  }
-                  return true;
+                [&F, &funcName](auto &fi) {
+                  return fi.funcReg.match(funcName) && fi.style == CALL &&
+                         (fi.kernelFunc.empty() ||
+                          F.getName() == fi.kernelFunc);
                 });
+
+            // Check if function body instrumentation is going
+            // and no special handling is requested, instrument
+            // function call in default way.
+            if (funcToInstrument == funcsToInstrument_.end()) {
+              if (instrumentFunctionBody) {
+                instrumentFuntionCall(CI, funcName, printfF);
+              }
+              continue;
+            }
+
+            DEBUG_GLOW(llvm::outs()
+                       << "Instrumenting: " << funcName << " in kernel: "
+                       << (funcToInstrument->kernelFunc.empty()
+                               ? "any"
+                               : funcToInstrument->kernelFunc)
+                       << "\n");
 
             // If function is in the list to be instumented and
             // custom functions before (and after specified) use them.
-            if (funcToInstrument != funcsToInstrument_.end() &&
-                funcToInstrument->callBefore) {
+            if (funcToInstrument->callBefore || funcToInstrument->callAfter) {
               llvm::IRBuilder<> builder(CI);
 
               // Args to be used for calling the specialized function.
@@ -199,21 +257,21 @@ public:
                 argsForInstr.push_back(arg);
               }
 
-              builder.CreateCall(
-                  funcToInstrument->callBefore->getFunctionType(),
-                  funcToInstrument->callBefore, argsForInstr);
+              if (funcToInstrument->callBefore) {
+                builder.CreateCall(
+                    funcToInstrument->callBefore->getFunctionType(),
+                    funcToInstrument->callBefore, argsForInstr);
+              }
+
               if (funcToInstrument->callAfter) {
                 builder.SetInsertPoint(&BB, ++builder.GetInsertPoint());
                 builder.CreateCall(
                     funcToInstrument->callAfter->getFunctionType(),
                     funcToInstrument->callAfter, argsForInstr);
               }
-              // Otherwise check if function body instrumentation is going
-              // or default wrappers for function requested, wrap the
-              // function.
-            } else if (instrumentFunctionBody ||
-                       funcToInstrument != funcsToInstrument_.end()) {
-              instrumentFuntionCall(CI, printfF);
+            } else {
+              // Fall back to default function instumentation
+              instrumentFuntionCall(CI, funcName, printfF);
             }
           }
         }
@@ -226,16 +284,15 @@ public:
 
 private:
   // Prints function input parameter values.
-  void instrumentFuntionCall(llvm::CallInst *CI, llvm::Function *printfF) {
-    if (CI->getCalledFunction() == nullptr ||
-        (CI->getCalledFunction()->getName() == printfF->getName())) {
+  void instrumentFuntionCall(llvm::CallInst *CI, const std::string &funcName,
+                             llvm::Function *printfF) {
+    if (funcName.empty() || funcName == printfF->getName().str()) {
       return;
     }
 
     llvm::IRBuilder<> builder(CI);
 
-    auto *functionName = irgen_.emitStringConst(
-        irgen_.getBuilder(), CI->getCalledFunction()->getName());
+    auto *functionName = irgen_.emitStringConst(irgen_.getBuilder(), funcName);
     builder.CreateCall(printfF->getFunctionType(), printfF,
                        {formatFuncInArg_, functionName});
 
@@ -260,7 +317,11 @@ private:
           value = builder.CreateLoad(op.get());
         }
 
-        argFormat = irgen_.emitStringConst(irgen_.getBuilder(), "\targ: %d\n");
+        std::string quant = "\targ: %";
+        quant +=
+            llvm::cast<llvm::IntegerType>(type)->getBitWidth() == 64 ? "l" : "";
+        quant += "u\n";
+        argFormat = irgen_.emitStringConst(irgen_.getBuilder(), quant);
         builder.CreateCall(printfF->getFunctionType(), printfF,
                            {argFormat, value});
         continue;
