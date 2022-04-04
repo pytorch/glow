@@ -376,12 +376,8 @@ void LLVMIRGen::finishCodeGen() {
   }
 }
 
-llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
-                                         const glow::Value *val) {
-  assert(allocationsInfo_.allocatedAddress_.count(val) &&
-         "Value address was not allocated");
+llvm::Type *LLVMIRGen::getLLVMPtrType(const glow::Value *val) {
   llvm::Type *T = nullptr;
-
   switch (val->getElementType()) {
   case ElemKind::FloatTy:
     T = llvm::Type::getFloatPtrTy(getLLVMContext());
@@ -435,6 +431,13 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     LOG(FATAL) << "Unsupported element type: "
                << Type::getElementName(val->getElementType()).str();
   }
+  return T;
+}
+
+llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
+                                         const glow::Value *val) {
+  assert(allocationsInfo_.allocatedAddress_.count(val) &&
+         "Value address was not allocated");
 
   assert(allocationsInfo_.valueNumbers_.count(val));
   auto &kindAndValue = allocationsInfo_.valueNumbers_[val];
@@ -464,7 +467,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   // Add offset to the base address.
   llvm::Value *addr = builder.CreateAdd(
       baseAddrValue, builder.CreateZExt(offsetValue, sizeTTy));
-  return builder.CreateIntToPtr(addr, T);
+  return builder.CreateIntToPtr(addr, getLLVMPtrType(val));
 }
 
 llvm::Value *

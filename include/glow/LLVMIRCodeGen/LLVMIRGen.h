@@ -188,6 +188,9 @@ protected:
   /// Whether to print the IR instrumentation callback API.
   bool printInstrumentIR_{false};
 
+  /// \returns the LLVM pointer type for a payload of \p val based on its type.
+  virtual llvm::Type *getLLVMPtrType(const glow::Value *val);
+
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
   virtual llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
