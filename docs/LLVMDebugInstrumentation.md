@@ -12,7 +12,7 @@ If there is a function call in the body then it will be handled in default manne
 
 - Function calls instrumentation. By default it will wrap all function calls that corresponds to given regular expression into traces before and after. Before and after can be either default instrumentation that prints function name and its input parameters or one can specify the functions to use. The specified functions have to have the same signature as original function.
 
-    **-llvm-code-debug-trace-instrumentation="foo:call[:before_foo[:after_foo]]"**
+    **-llvm-code-debug-trace-instrumentation="[kernel.]foo:call[:before_foo[:after_foo]]"**
 
 On top of that there is possibility to specify printing function by giving its name. The print out function has to have the same signature as printf
 
@@ -24,7 +24,8 @@ There is option to output instrumented IR by providing in command line (works on
 
 ## Examples
 
-- Body instrumentation example
+### Body instrumentation example
+
 image-classifier --backend=CPU -expected-labels=0 -image-mode=0to1 -model-input-name=data_0 **-llvm-code-debug-trace-instrumentation=libjit_element_div_kernel_i32:body -llvm-debug-trace-print-function-name=printf -debug-glow-only=debug-instrumentation** -m=mnist.onnx 0_1009.png
 
 Before:
@@ -96,7 +97,10 @@ define internal i32 @libjit_element_div_kernel_i32(i64, i32*, i32*, i32*) #0 {
 }
 ```
 
-- Call example
+### Call examples
+
+**wrapping libjit_element_relu_f call into printf functions and priting its input parameters**
+
 image-classifier --backend=CPU -expected-labels=0 -image-mode=0to1 -model-input-name=data_0 **-llvm-code-debug-trace-instrumentation=libjit_element_relu_f:call -llvm-debug-trace-print-function-name=printf -debug-glow-only=debug-instrumentation** -m=mnist.onnx 0_1009.png
 
 Before:
@@ -128,7 +132,40 @@ After:
 %buffer.element.addr = getelementptr float, float* %0, i64 %1
 ```
 
+**Instrumenting memory accesses**.
+
+Sometimes, due to a bug in a model code, one kernel might overwrite data from another kernel. Instrumentation provides an approach to detect accesses to a specific memory address range, assuming that such accesses are done via special APIs and thus are possible to intercept. If a "Address read/written XYZ" message is printed we definitely know that access to the specific memory region has happened. In this example readMemFp16 does reading from a memory... By adding detect_memory_access before readMemFp16 calls we can check whether the passed address falls into a user-specified address range.
+
+image-classifier --backend=CPU -expected-labels=0 -image-mode=0to1 -model-input-name=data_0 **-llvm-code-debug-trace-instrumentation=libjit_element_relu_f.readMemFp16:call:detect_memory_access
+ -llvm-detect-read-write-start-address=1024 -llvm-detect-read-write-end-address=2048** -m=mnist.onnx 0_1009.png
+```
+%695 = call i32 @detect_memory_access(%class.Fp16* %ref.tmp, i64 %add145)
+call void @readMemFp16(%class.Fp16* sret(%class.Fp16) %ref.tmp, i64 %add145) #16
+```
+
+Please note that well known load and store operations of LLVM IR would require more advanced functionality which is not supported yet.
+
+**Instrumenting async instruction/function execution.**
+
+There are architectures that might have ISA instructions executing asynchronously. Their execution might be taking different amount of cycles. So every run of the same kernel might have slightly different timing. This opens a possibility that in some circumstances kernels crash. The condition might happen e.g. under high load  or for a specific shape. So it is nice to have tool that converts asynchronously executed instructions/functions into synchronous ones in order to check if the root cause is asynchrony or timing related. One of the examples could be a data transfer between different levels of memory hierarchy (e.g. a DMA operation) that is usually slow by its nature and thus execution might benefit making it asynchronous. I.e. a memory load might be issued in advance while the main processor continues to do other independent work. Such a HW architecture opens a possibility for a kernel writer (codegen) to make e.g. a mistake like loading data from a local memory while a previously issued asynchronous copying of data from RAM into this local memory is still in progress and hasn't finished yet. That is why it is nice to first set fences around/after asynchronous instructions and check if the issue reproduces. Please see below example how to do it for "dma_out".
+
+image-classifier --backend=CPU -expected-labels=0 -image-mode=0to1 -model-input-name=data_0 **-llvm-code-debug-trace-instrumentation=softmax_stat_y_fp16.^dma_out:call:complete_all_local_work:complete_all_local_work** -m=mnist.onnx 0_1009.png
+
+```
+%887 = call i32 (i8*, ...) @complete_all_local_work()
+call void asm sideeffect "dma_out\09 \0A", "~{memory}"() #12, !srcloc !282
+%888 = call i32 (i8*, ...) @complete_all_local_work()
+```
+
+none is a special value if instrumentaton needs to happen only after interested function.
+
+image-classifier --backend=CPU -expected-labels=0 -image-mode=0to1 -model-input-name=data_0 **--llvm-code-debug-trace-instrumentation=softmax_stat_y_fp16.^dma_out:call:none:complete_all_local_work** -m=mnist.onnx 0_1009.png
+
+```
+call void asm sideeffect "dma_out\09 \0A", "~{memory}"() #12, !srcloc !282
+%887 = call i32 (i8*, ...) @complete_all_local_work()
+```
+
+
 ## Further improvements
-1. Provide possibility to consume lib or LLVM bitcode file that will provide pretty_print_* functions
-2. Improve stability, i.e. customize body printouts based on LLVM instruction result type
-3. Add printout of debug information: file names and line numbers. Or llvm IR line mapping that can be used by gdb at live time debugging.
+1. Add printout of debug information: file names and line numbers. Or llvm IR line mapping that can be used by gdb during live debugging.
