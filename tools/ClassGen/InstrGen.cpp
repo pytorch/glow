@@ -1051,8 +1051,11 @@ int main(int argc, char **argv) {
       .addOperand("Offsets", OperandKind::In)
       .addOperand("IndiceWeight", OperandKind::In)
       .addMember(MemberType::Int64, "TotalDims")
-      .addMember(MemberType::Int64, "PoolingMode")
-      .addMember(MemberType::Int64, "OutputDType")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingPoolingMode),
+                 "PoolingMode")
+      .addMember(MEMBER_TYPE_INFO(glow::SplitEmbeddingSparseType),
+                 "OutputDType")
+
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int32ITy"})
