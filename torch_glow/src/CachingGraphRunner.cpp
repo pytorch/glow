@@ -905,8 +905,8 @@ CachingGraphRunner::convertPyTorchInputToGlowInput(
     assert(zeroLengthSequence_.getUnsafePtr());
     glowTensor = glow::Tensor((void *)zeroLengthSequence_.getUnsafePtr(), ty);
   } else {
-    // For backends that does not support partial tensor, manually pad
-    // zeros
+    // For backends that does not support partial tensor, last-element padding
+    // based on size
     auto inputTensorOpt = tensorPool_.get(ty);
     if (!inputTensorOpt.hasValue()) {
       std::stringstream ss;
@@ -917,11 +917,37 @@ CachingGraphRunner::convertPyTorchInputToGlowInput(
     glow::Tensor inputTensor(std::move(inputTensorOpt.getValue()));
     inputTensor.resetDeviceInfo();
     if (ptTensor.data_ptr()) {
-      memcpy(inputTensor.getUnsafePtr(), ptTensor.data_ptr(),
-             ptTensor.nbytes());
-      // Pad remaining space with zeroes.
-      memset(inputTensor.getUnsafePtr() + ptTensor.nbytes(), 0,
-             inputTensor.getSizeInBytes() - ptTensor.nbytes());
+      auto *inTensorPtr = inputTensor.getUnsafePtr();
+      memcpy(inTensorPtr, ptTensor.data_ptr(), ptTensor.nbytes());
+      auto hostElementSize = inputTensor.getType().getElementSize();
+      int numElements = ptTensor.nbytes() / hostElementSize;
+      int numPaddedElements = inputTensor.getSizeInBytes() / hostElementSize;
+      if (hostElementSize == 1) {
+        std::fill(
+            reinterpret_cast<uint8_t *>(inTensorPtr) + numElements,
+            reinterpret_cast<uint8_t *>(inTensorPtr) + numPaddedElements,
+            reinterpret_cast<const uint8_t *>(inTensorPtr)[numElements - 1]);
+      } else if (hostElementSize == 2) {
+        std::fill(
+            reinterpret_cast<uint16_t *>(inTensorPtr) + numElements,
+            reinterpret_cast<uint16_t *>(inTensorPtr) + numPaddedElements,
+            reinterpret_cast<const uint16_t *>(inTensorPtr)[numElements - 1]);
+      } else if (hostElementSize == 4) {
+        std::fill(
+            reinterpret_cast<uint32_t *>(inTensorPtr) + numElements,
+            reinterpret_cast<uint32_t *>(inTensorPtr) + numPaddedElements,
+            reinterpret_cast<const uint32_t *>(inTensorPtr)[numElements - 1]);
+      } else if (hostElementSize == 8) {
+        std::fill(
+            reinterpret_cast<uint64_t *>(inTensorPtr) + numElements,
+            reinterpret_cast<uint64_t *>(inTensorPtr) + numPaddedElements,
+            reinterpret_cast<const uint64_t *>(inTensorPtr)[numElements - 1]);
+      } else {
+        LOG(ERROR) << "Invalid Tensor type, padding is unsuccessful";
+      }
+      // // Pad remaining space with zeroes.
+      // memset(inputTensor.getUnsafePtr() + ptTensor.nbytes(), 0,
+      //        inputTensor.getSizeInBytes() - ptTensor.nbytes());
     } else {
       inputTensor.zero();
     }

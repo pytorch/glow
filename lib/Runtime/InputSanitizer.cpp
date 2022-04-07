@@ -97,11 +97,12 @@ static Error sanitizeOffsets(const Tensor *offsetsTensor,
   }
 
   size_t lastOffset = offsets.raw(offsetsLen - 1);
-  RETURN_ERR_IF_NOT(
-      zeroTensor || lastOffset == numberOfIndices,
-      strFormat("EBB offsets sanitization failed on tensor %s: "
-                "the last offset %lu is not equal to the number of indices %lu",
-                tensorName.str().c_str(), lastOffset, numberOfIndices));
+  RETURN_ERR_IF_NOT(zeroTensor || lastOffset == numberOfIndices,
+                    strFormat("EBB offsets sanitization failed on tensor %s: "
+                              "the last offset %lu is not equal to the number "
+                              "of indices %lu, offsetsLen = %lu",
+                              tensorName.str().c_str(), lastOffset,
+                              numberOfIndices, offsetsLen));
 
   return Error::success();
 }
