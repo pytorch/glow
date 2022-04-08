@@ -373,6 +373,13 @@ public:
               << ")\n";
   }
 
+  /// Declare a backend specific instruction in the def file but don't
+  /// generate code for it.
+  void declareBackendSpecificInstr(const std::string &name) {
+    defStream << "DEF_BACKEND_SPECIFIC_INSTR(" << name << "Inst, "
+              << glow::tolower(name) << ")\n";
+  }
+
   /// Declare the value in the def file but don't generate code for it.
   void declareValue(const std::string &name) {
     defStream << "DEF_VALUE(" << name << ", " << glow::tolower(name) << ")\n";
