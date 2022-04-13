@@ -660,6 +660,11 @@ void IRFunction::dump(llvm::raw_ostream &OS) const {
 
   // Print all of the instructions:
   for (const auto &I : instrs_) {
+    // If this instructon was fused into an Instruction Group. skip printing.
+    // printing is handled in the FusionGroupInst.
+    if (I.isFused()) {
+      continue;
+    }
     sb << "  ";
     auto InstrNum = InstrNumbering.getInstrNumber(&I);
     assert(InstrNum >= 0);

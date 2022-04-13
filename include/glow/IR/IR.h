@@ -126,6 +126,9 @@ private:
 
   /// Parent function.
   IRFunction *F_;
+  /// Parent FusionGroupInstr this instruction belongs to.
+  Instruction *parentFusionGroupInstr_;
+
   /// If a predicate is set this index points to the non-zero index of the
   /// predicate in the instruction list.
   unsigned predicateIndex_{0};
@@ -164,11 +167,11 @@ public:
   void pushOperand(Operand op);
 
   Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty)
-      : Value(name, Ty, k), F_(nullptr) {}
+      : Value(name, Ty, k), F_(nullptr), parentFusionGroupInstr_(nullptr) {}
 
   Instruction(llvm::StringRef name, Kinded::Kind k, TypeRef Ty,
               llvm::ArrayRef<Operand> ops)
-      : Value(name, Ty, k), F_(nullptr) {
+      : Value(name, Ty, k), F_(nullptr), parentFusionGroupInstr_(nullptr) {
     for (auto &op : ops) {
       pushOperand(op);
     }
@@ -226,6 +229,21 @@ public:
   /// \returns parent of current instruction.
   const IRFunction *getParent() const { return F_; }
   IRFunction *getParent() { return F_; }
+
+  /// \returns true if the instruction is fused into a FusionGroupInstr
+  bool isFused() const { return parentFusionGroupInstr_ != nullptr; }
+
+  /// \returns parent fusionGroupInstr
+  const Instruction *getParentGroupFusionInstr() {
+    return parentFusionGroupInstr_;
+  }
+
+  /// Sets a Parent Group Fusion Instruction
+  void setParentGroupFusionInstr(Instruction *instr) {
+    assert((instr->getKind() == Kinded::Kind::FusionGroupInstKind) &&
+           "Not a FusionGroupInstr");
+    parentFusionGroupInstr_ = instr;
+  }
 
   /// Sets a parent for the current instruction.
   void setParent(IRFunction *Mod) { F_ = Mod; }

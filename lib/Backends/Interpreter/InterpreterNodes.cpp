@@ -636,6 +636,12 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
       group, I->getDilation());
 }
 
+void BoundInterpreterFunction::fwdFusionGroupInst(
+    const glow::FusionGroupInst *p) {
+  llvm_unreachable(
+      "Fusion Group instruction not supported on Inrerpretter backend\n");
+}
+
 void BoundInterpreterFunction::fwdConcatInst(const ConcatInst *I) {
   (void)I;
   // TODO

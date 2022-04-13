@@ -230,3 +230,17 @@ IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
   auto T = F_->getParent()->uniqueType(elemTy, dims);
   return createAllocActivationInst(name, T);
 }
+
+FusionGroupInst *IRBuilder::createFusionGroupInst(llvm::StringRef name,
+                                                  Instruction *instr1,
+                                                  Instruction *instr2) {
+  auto *fused = new FusionGroupInst(name, instr1, instr2);
+  return fused;
+}
+
+FusionGroupInst *
+createFusionGroupInst(llvm::StringRef name,
+                      llvm::SmallVectorImpl<Instruction *> instrs) {
+  auto *fused = new FusionGroupInst(name, instrs);
+  return fused;
+}

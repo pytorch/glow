@@ -389,3 +389,33 @@ TEST(IR, scratchAllocation) {
     EXPECT_EQ(scratch->getType()->size(), topk->getScratchSize());
   }
 }
+
+TEST(IR, fusiongroup) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
+  {
+    IRBuilder bb(&M);
+
+    auto *input = bb.createWeightVar(ElemKind::FloatTy, {1, 224, 224, 3});
+    auto *res = bb.createAllocActivationInst("sigmoid.res", input->getType());
+    auto *sig = bb.createSigmoidInst("sigmoid", res, input);
+    auto *pool =
+        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC,
+                           /* countIncludePads */ true);
+
+    // Deallocte activation alloated for sigmoid
+    bb.createDeallocActivationInst("dealloc_sigmod_res", res);
+    // Deallocate activation allocated for AvgPool. it is created in the API
+    // createAvgPoolOp.
+    bb.createDeallocActivationInst("dealloc_pool_res", pool->getDest());
+    /// Fuse the Sigmoid and avg pool instructions into one instruction.
+    auto *fusedSigPool =
+        bb.createFusionGroupInst("fused_sigmoid_avgpool", sig, pool);
+    M.insertInstruction(pool, fusedSigPool);
+    sig->setParentGroupFusionInstr(fusedSigPool);
+    pool->setParentGroupFusionInstr(fusedSigPool);
+    M.dump();
+    M.verify();
+  }
+}

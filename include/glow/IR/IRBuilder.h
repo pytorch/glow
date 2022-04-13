@@ -104,6 +104,13 @@ public:
                                                  ElemKind elemTy,
                                                  llvm::ArrayRef<dim_t> dims);
 
+  FusionGroupInst *createFusionGroupInst(llvm::StringRef name,
+                                         Instruction *instr1,
+                                         Instruction *instr2);
+
+  FusionGroupInst *
+  createFusionGroupInst(llvm::StringRef name,
+                        llvm::SmallVectorImpl<Instruction *> instrs);
 // Import the auto-generated instruction creation methods:
 #include "glow/AutoGenIRBuilder.h"
 

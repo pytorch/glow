@@ -64,6 +64,74 @@ public:
   void verify() const {}
 };
 
+/// This is a manually written instruction to represent a Group of Fused
+/// instructions. The class works by receieved
+class FusionGroupInst final : public Instruction {
+public:
+  FusionGroupInst(llvm::StringRef name, Instruction *instr1,
+                  Instruction *instr2)
+      : Instruction(name, Kinded::Kind::FusionGroupInstKind, nullptr, {}) {
+    transferOperands(instr1);
+    transferOperands(instr2);
+    instrs_.push_back(instr1);
+    instrs_.push_back(instr2);
+  }
+
+  FusionGroupInst(llvm::StringRef name,
+                  llvm::SmallVectorImpl<Instruction *> &instrs)
+      : Instruction(name, Kinded::Kind::FusionGroupInstKind, nullptr, {}) {
+    for (Instruction *instr : instrs) {
+      transferOperands(instr);
+      instrs_.push_back(instr);
+    }
+  }
+
+  static bool classof(const Kinded *k) {
+    return k->getKind() == Kinded::Kind::FusionGroupInstKind;
+  }
+
+  /// Returns a refernce to the vector of instructions making up the fused
+  /// instruction.
+  const std::vector<Instruction *> &getInstrs() { return instrs_; }
+
+  /// Dump out the Fused instruction with its operands to \p os stream.
+  void dump(llvm::raw_ostream &os) const {
+    os << "%" << (std::string)getName() << " = " << getKindName() << " ";
+    dumpOperands(os);
+    // Dump the Instruction the fusion is composed of
+    os << "\n  {";
+    for (auto *I : instrs_) {
+      os << "\n    ";
+      I->dump(os);
+    }
+    os << "\n  }";
+  }
+
+  /// Dump out the Fused instruction with its operands to default stream stream.
+  void dump() const { dump(llvm::outs()); }
+
+  bool verify() const { return true; }
+
+private:
+  /// Instructions that make up this fused instruction.
+  std::vector<Instruction *> instrs_;
+  std::set<glow::Value *> fusedOperands_;
+
+  /// Transfers the operands from \p instr to the newly created fusion
+  /// instruction.
+  void transferOperands(Instruction *instr) {
+    for (auto &op : instr->getOperands()) {
+      // Push the operand to the fused Instruction if it is not already added
+      // before from an earlier instruction.
+      if (fusedOperands_.count(op.first)) {
+        continue;
+      }
+      pushOperand(op);
+      fusedOperands_.insert(op.first);
+    }
+  }
+};
+
 } // namespace glow
 
 // The rest of the nodes are auto-generated into this file:
