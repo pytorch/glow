@@ -471,6 +471,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"aten::size", ShapeInference(&size, &SI::addShapeConstant)},
       {"fb::scale_gradient",
        ShapeInference(&scaleGradient, &SI::addShapeDefault)},
+      {"fb::to_lengths_to_offsets",
+       ShapeInference(&toLengthsToOffsets, &SI::addShapeDefault)},
       {"aten::repeat", ShapeInference(&repeat, &SI::addShapeDefault)},
       {"aten::softmax", ShapeInference(&softmax, &SI::addShapeDefault)},
       {"aten::unsqueeze", ShapeInference(&unsqueeze, &SI::addShapeDefault)},
@@ -2400,6 +2402,46 @@ ShapeInferenceEngine::lengthsToOffsets(const MetaStack &variableMetas) {
   output.shapeOrIntValues = t;
   output.shapeOrIntValues[0] += 1; // include last offset
   output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * fb::to_lengths_to_offsets.prim_dtype(Tensor lengths, bool
+ * include_last_offset, int? dtype) -> Tensor,
+ * fb::to_lengths_to_offsets.dtype(Tensor lengths, bool include_last_offset,
+ * ScalarType dtype) -> Tensor, Does not support Other variant since we can't
+ * distinguish this input in shape inference from the prim None type input, and
+ * the current shape support for aten::to does not support the Other overload.
+ * Only supports include_last_offset=true per the current shape inference
+ * support for lengths_to_offsets
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::toLengthsToOffsets(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected 3 input, got %zu.", variableMetas.size()));
+
+  const TensorShape &t = variableMetas[0].shape<TensorShape>(); // input shape
+  RETURN_ERR_IF_NOT(t.size() == 1,
+                    strFormat("Expected input dim is 1, got %zu.", t.size()));
+
+  // only support include_last_offset=true, per the original shape inference
+  // implementation for lengths_to_offsets
+  bool include_last_offset = variableMetas[1].intValue[0];
+  RETURN_ERR_IF_NOT(include_last_offset == true,
+                    strFormat("Expected include_last_offset is true, got %d.",
+                              include_last_offset));
+
+  auto &dtype_int = variableMetas[2].intValue;
+
+  TensorOutput output;
+  output.shapeOrIntValues = t;
+  output.shapeOrIntValues[0] += 1; // include last offset
+  if (dtype_int.size() == 0) {
+    output.dtype = variableMetas[0].dtype;
+  } else {
+    output.dtype = static_cast<c10::ScalarType>(dtype_int[0]);
+  }
   return output;
 }
 
