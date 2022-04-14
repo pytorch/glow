@@ -75,6 +75,8 @@ public:
     transferOperands(instr2);
     instrs_.push_back(instr1);
     instrs_.push_back(instr2);
+    instr1->setParentGroupFusionInstr(this);
+    instr2->setParentGroupFusionInstr(this);
   }
 
   FusionGroupInst(llvm::StringRef name,
@@ -83,6 +85,7 @@ public:
     for (Instruction *instr : instrs) {
       transferOperands(instr);
       instrs_.push_back(instr);
+      instr->setParentGroupFusionInstr(this);
     }
   }
 

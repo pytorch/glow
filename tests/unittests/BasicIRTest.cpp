@@ -413,8 +413,6 @@ TEST(IR, fusiongroup) {
     auto *fusedSigPool =
         bb.createFusionGroupInst("fused_sigmoid_avgpool", sig, pool);
     M.insertInstruction(pool, fusedSigPool);
-    sig->setParentGroupFusionInstr(fusedSigPool);
-    pool->setParentGroupFusionInstr(fusedSigPool);
     M.dump();
     M.verify();
   }
