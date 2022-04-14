@@ -39,7 +39,7 @@ using namespace glow;
  * in multiple layers.
  *
  * Microbenchmarks are generally useful for understanding performance
- * through targeted experiementation and are not representative of
+ * through targeted experimentation and are not representative of
  * end-to-end workloads.
  */
 // TODO: Move all the args passed by command line to LLVM options.
