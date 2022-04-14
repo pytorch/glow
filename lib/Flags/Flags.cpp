@@ -128,6 +128,7 @@ namespace interpreter {
 namespace flags {
 bool LowerBatchMatMul = true;
 bool LowerLayerNormalization = true;
+int32_t RowAlignmentBytes = 16;
 } // namespace flags
 } // namespace interpreter
 } // namespace glow
@@ -703,6 +704,17 @@ DEFINE_bool(glow_interpreter_lower_layer_normalization,
 DEFINE_validator(glow_interpreter_lower_layer_normalization,
                  [](const char *, bool val) {
                    glow::interpreter::flags::LowerLayerNormalization = val;
+                   return true;
+                 });
+DEFINE_int32(glow_interpreter_row_alignment_bytes,
+             glow::interpreter::flags::RowAlignmentBytes,
+             "Row alignment in bytes.");
+DEFINE_validator(glow_interpreter_row_alignment_bytes,
+                 [](const char *, int32_t val) {
+                   if (val < 1 || (val & val - 1) && val != 1) {
+                     return false;
+                   }
+                   glow::interpreter::flags::RowAlignmentBytes = val;
                    return true;
                  });
 

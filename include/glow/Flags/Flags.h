@@ -120,6 +120,7 @@ namespace interpreter {
 namespace flags {
 extern bool LowerBatchMatMul;
 extern bool LowerLayerNormalization;
+extern int32_t RowAlignmentBytes;
 } // namespace flags
 } // namespace interpreter
 } // namespace glow

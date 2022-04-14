@@ -18,6 +18,7 @@
 
 #include "glow/Base/TensorSerialization.h"
 #include "glow/Base/Type.h"
+#include "glow/Flags/Flags.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Base/Profile.h"
@@ -46,14 +47,19 @@ inline int32_t unpaddedRowSizeInBytes(int32_t dim,
   if (weight_ty == SplitEmbeddingSparseType::EST_FLOAT16) {
     return dim * sizeof(float16_t);
   }
+
+  int32_t sizeOfFusedScaleOffset = glow::flags::ConvertFusedScaleOffsetToFP32
+                                       ? sizeof(float)
+                                       : sizeof(float16_t);
+
   if (weight_ty == SplitEmbeddingSparseType::EST_INT8) {
-    return dim + 2 * sizeof(float16_t);
+    return dim + 2 * sizeOfFusedScaleOffset;
   }
   if (weight_ty == SplitEmbeddingSparseType::EST_INT4) {
-    return dim / 2 + 2 * sizeof(float16_t);
+    return dim / 2 + 2 * sizeOfFusedScaleOffset;
   }
   if (weight_ty == SplitEmbeddingSparseType::EST_INT2) {
-    return dim / 4 + 2 * sizeof(float16_t);
+    return dim / 4 + 2 * sizeOfFusedScaleOffset;
   }
   llvm_unreachable("Unsupported SparseType");
 }
@@ -63,7 +69,7 @@ uint32_t roundUp(uint32_t a, uint32_t b) { return ((a + b - 1) / b) * b; }
 inline int32_t paddedRowSizeInBytes(int32_t dim,
                                     SplitEmbeddingSparseType weight_ty) {
   auto r = unpaddedRowSizeInBytes(dim, weight_ty);
-  return roundUp(r, 16);
+  return roundUp(r, glow::interpreter::flags::RowAlignmentBytes);
 }
 
 template <typename SumTy>
@@ -81,8 +87,14 @@ SumTy add(SumTy a, const uint8_t *row, const uint8_t *data,
                               *(reinterpret_cast<const float16_t *>(data)));
   }
 
-  float scale = *(reinterpret_cast<const float16_t *>(row));
-  float offset = *(reinterpret_cast<const float16_t *>(row) + 1);
+  float scale, offset;
+  if (glow::flags::ConvertFusedScaleOffsetToFP32) {
+    scale = *(reinterpret_cast<const float *>(row));
+    offset = *(reinterpret_cast<const float *>(row) + 1);
+  } else {
+    scale = *(reinterpret_cast<const float16_t *>(row));
+    offset = *(reinterpret_cast<const float16_t *>(row) + 1);
+  }
 
   if (dataTy == SplitEmbeddingSparseType::EST_INT8) {
     return sum + weight * (static_cast<float>(*data) * scale + offset);
@@ -6566,7 +6578,6 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsImpl(
     int64_t poolingMode, Tensor *indiceWeights, int64_t totalDims,
     int64_t /*outputDType*/) {
   out->zero();
-
   auto indicesH = indices->getHandle<IndexTy>();
   auto offsetsH = offsets->getHandle<IndexTy>();
   auto devWeightsH = devWeights->getHandle<uint8_t>();
