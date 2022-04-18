@@ -13,12 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "Bench.h"
 #include "glow/Base/DimType.h"
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
-#include "glow/glow/tests/benchmark/Bench.h"
 #include <algorithm>
 #include <array>
 #include <cstdlib>

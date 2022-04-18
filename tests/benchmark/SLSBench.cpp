@@ -22,7 +22,7 @@
 #include <string>
 
 #include "Bench.h"
-#include "glow/glow/tests/benchmark/CommonSLSEB.h"
+#include "CommonSLSEB.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
