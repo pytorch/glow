@@ -334,7 +334,8 @@ private:
   // Shape inference for quantized::mul
   static Expected<TensorOutput> quantizedMul(const MetaStack &variableMetas);
   // Shape inference for aten::matmul
-  static Expected<TensorOutput> matmul(const MetaStack &variableMetas);
+  static Expected<TensorOutput> matmul(const MetaStack &variableMetas,
+                                       const torch::jit::Node *node);
   // Shape inference for aten::layerNorm
   static Expected<TensorOutput> layerNorm(const MetaStack &variableMetas);
   // Shape inference for aten::linear
@@ -379,6 +380,19 @@ private:
   static Expected<TensorOutput> softmax(const MetaStack &variableMetas);
   // Shape inference for aten::unsqueeze
   static Expected<TensorOutput> unsqueeze(const MetaStack &variableMetas);
+  // Shape inference for aten::clamp_min
+  static Expected<TensorOutput> clampMin(const MetaStack &variableMetas);
+  // Shape inference for aten::norm
+  static Expected<TensorOutput> norm(const MetaStack &variableMetas);
+  // Shape inference for aten::expand_as
+  static Expected<TensorOutput> expandAs(const MetaStack &variableMetas);
+  // Shape inference for aten::argmin
+  static Expected<TensorOutput> argmin(const MetaStack &variableMetas);
+  // Shape inference for fb::sigrid_hash_precompute
+  static Expected<TensorOutput>
+  sigridHashPrecompute(const MetaStack &variableMetas);
+  // Shape inference for aten::full_like
+  static Expected<TensorOutput> fullLike(const MetaStack &variableMetas);
 };
 
 } // namespace glow
