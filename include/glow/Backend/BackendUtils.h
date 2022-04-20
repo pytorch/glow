@@ -19,7 +19,11 @@
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/IR/IR.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <map>
+
+extern llvm::cl::opt<bool> reuseActivationsMemory;
 
 namespace glow {
 namespace runtime {

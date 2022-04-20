@@ -14,13 +14,10 @@
  * limitations under the License.
  */
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Graph/FXIRWrapper.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
-
-#include "llvm/Support/CommandLine.h"
-
-#include "glow/Graph/FXIRWrapper.h"
 #include <glog/logging.h>
 
 #define DEBUG_TYPE "backend-utils"
@@ -33,7 +30,7 @@ using llvm::isa;
 
 static llvm::cl::OptionCategory BackendUtilsCat("Glow Backend Utils Options");
 
-static llvm::cl::opt<bool> reuseActivationsMemory(
+llvm::cl::opt<bool> reuseActivationsMemory(
     "reuse-activation-memory-allocations",
     llvm::cl::desc("Should activation memory allocations be reused"),
     llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
