@@ -7128,17 +7128,16 @@ Error PyTorchModelLoader::loadBAddBmm(const torch::jit::Node *ptNode) {
   float beta;
   ASSIGN_VALUE_OR_RETURN_ERR(beta, getScalar(inputs[BAddBmmInputs::beta]));
 
-  if (beta != 1.0) {
-    return MAKE_ERR("beta != 1.0");
-  }
-
-  if (alpha != 1.0) {
-    return MAKE_ERR("alpha != 1.0");
-  }
-
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[BAddBmmInputs::input]));
+
+  if (beta != 1.0) {
+    glow::Tensor t(ElemKind::FloatTy, input.dims());
+    t.init(Tensor::InitKind::Broadcast, beta, F_.getParent()->getPRNG());
+    auto *constant = F_.getParent()->createConstant("beta", std::move(t));
+    input = F_.createMul("mul", constant, input)->getResult();
+  }
 
   glow::NodeValue lhs;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -7157,6 +7156,13 @@ Error PyTorchModelLoader::loadBAddBmm(const torch::jit::Node *ptNode) {
   }
 
   auto mulOutput = F_.createBatchMatMul("[badd]bmm", lhs, rhs)->getResult();
+
+  if (alpha != 1.0) {
+    glow::Tensor t(ElemKind::FloatTy, mulOutput.dims());
+    t.init(Tensor::InitKind::Broadcast, alpha, F_.getParent()->getPRNG());
+    auto *constant = F_.getParent()->createConstant("alpha", std::move(t));
+    mulOutput = F_.createMul("mul", constant, mulOutput)->getResult();
+  }
 
   auto output = F_.createNodeWithBroadcast<AddNode>("badd[bmm]", /*axis*/ -1,
                                                     input, mulOutput)
