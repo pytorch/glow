@@ -127,9 +127,9 @@ public:
       llvm::StringRef(elements[0]).split(functions, ".");
 
       InstrumentationMetaInformation funcToInstrument{
-          functions[1].empty() ? "" : functions[0],
-          functions[1].empty() ? llvm::Regex(functions[0])
-                               : llvm::Regex(functions[1]),
+          functions.size() == 1 ? "" : functions[0],
+          functions.size() == 1 ? llvm::Regex(functions[0])
+                                : llvm::Regex(functions[1]),
           (elements[1] == "body" ? BODY : CALL), nullptr, nullptr};
 
       if (funcToInstrument.style == CALL) {
