@@ -704,6 +704,11 @@ private:
   /// \returns error on failure.
   Error loadFusedBroadcastConcat(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch fb::broadcast_cat_rc node fused with a prim::ListConstruct
+  /// into a glow::fused_broadcast_cat_rc node.
+  /// \returns error on failure.
+  Error loadFusedBroadcastConcatRC(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch prim::stack node fused with a prim::ListConstruct into a
   /// glow:FusedStack node.
   /// \returns error on failure.

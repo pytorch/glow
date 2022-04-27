@@ -252,6 +252,9 @@ private:
   static Expected<TensorOutput>
   fusedBroadcastConcat(const MetaStack &variableMetas,
                        const torch::jit::Node *node);
+  static Expected<TensorOutput>
+  fusedBroadcastConcatRC(const MetaStack &variableMetas,
+                         const torch::jit::Node *node);
   // Shape inference for prim::ListConstruct
   static Expected<TensorListOutput>
   listConstruct(const MetaStack &variableMetas, const torch::jit::Node *node);
