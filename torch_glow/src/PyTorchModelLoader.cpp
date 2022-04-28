@@ -1464,6 +1464,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"glow::fused_broadcast_stack"},
        &PyTorchModelLoader::loadFusedBroadcastStack,
        &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"glow::fused_broadcast_stack_rc"},
+       &PyTorchModelLoader::loadFusedBroadcastStackRC,
+       &PyTorchModelLoader::correctTypeAlreadySet},
       {{"aten::floor"},
        UNARY_NODE_LOADER(Floor),
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
@@ -4558,15 +4561,16 @@ Error PyTorchModelLoader::loadFusedBroadcastConcat(
   return Error::success();
 }
 
-static glow::Node *createReshapeNodeForStack(glow::Function &F,
-                                             const torch::jit::Node *ptNode,
-                                             const NodeValue concat) {
+static glow::Node *
+createReshapeNodeForStack(glow::Function &F, const torch::jit::Node *ptNode,
+                          const NodeValue concat,
+                          bool enableRequestCoalescing = false) {
   auto inputs = ptNode->inputs();
   int64_t dim = ptNode->i(at::attr::dim);
 
   auto concatDims = concat.dims();
   uint ndims = concatDims.size();
-  auto numInputs = inputs.size();
+  auto numInputs = enableRequestCoalescing ? inputs.size() - 1 : inputs.size();
   std::vector<glow::dim_t> reshapeDims;
 
   // if dim == a.dim(), then the correct calculation should be:
@@ -4656,6 +4660,34 @@ Error PyTorchModelLoader::loadFusedBroadcastStack(
   RETURN_IF_ERR(addValueMapping(
       outputs[0],
       createReshapeNodeForStack(F_, ptNode, concatAndHigherType.first)));
+
+  if (concatAndHigherType.second != at::ScalarType::Undefined) {
+    RETURN_IF_ERR(
+        setCorrectTypeMapping(outputs[0], concatAndHigherType.second));
+  } else {
+    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+  }
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadFusedBroadcastStackRC(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  std::pair<NodeValue, at::ScalarType> concatAndHigherType;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      concatAndHigherType,
+      createConcatNode(this, F_, ptNode, true /* isStack */,
+                       true /* doBroadcast */,
+                       true /* enableRequestCoalescing */));
+
+  RETURN_IF_ERR(addValueMapping(
+      outputs[0],
+      createReshapeNodeForStack(F_, ptNode, concatAndHigherType.first,
+                                true /* enableRequestCoalescing */)));
 
   if (concatAndHigherType.second != at::ScalarType::Undefined) {
     RETURN_IF_ERR(

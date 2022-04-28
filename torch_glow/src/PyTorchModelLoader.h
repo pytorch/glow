@@ -719,6 +719,11 @@ private:
   /// \returns error on failure.
   Error loadFusedBroadcastStack(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch fb::broadcast_stack_rc node fused with a
+  /// prim::ListConstruct into a glow:FusedBroadcastStackRC node. \returns error
+  /// on failure.
+  Error loadFusedBroadcastStackRC(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch LSTM node.
   /// \returns error on failure.
   Error loadLSTM(const torch::jit::Node *ptNode);
