@@ -168,6 +168,7 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
   std::call_once(onceFlag, []() {
     registerDummyOperator("glow::fused_stack");
     registerDummyOperator("glow::fused_broadcast_cat");
+    registerDummyOperator("glow::fused_broadcast_cat_rc");
     registerDummyOperator("glow::fused_broadcast_stack");
   });
   auto block = graph->block();
@@ -177,6 +178,7 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
 
     if (kind != at::aten::cat && kind != at::aten::stack &&
         ::strcmp(kind.toQualString(), "fb::broadcast_cat") != 0 &&
+        ::strcmp(kind.toQualString(), "fb::broadcast_cat_rc") != 0 &&
         ::strcmp(kind.toQualString(), "fb::broadcast_stack") != 0) {
       continue;
     }
@@ -201,16 +203,29 @@ void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
       symbolS = "glow::fused_stack";
     } else if (::strcmp(kind.toQualString(), "fb::broadcast_cat") == 0) {
       symbolS = "glow::fused_broadcast_cat";
+    } else if (::strcmp(kind.toQualString(), "fb::broadcast_cat_rc") == 0) {
+      symbolS = "glow::fused_broadcast_cat_rc";
     } else {
       // kind.toQualString() == "fb::broadcast_stack"
       symbolS = "glow::fused_broadcast_stack";
     }
-
-    auto *fusedNode = graph->create(torch::jit::Symbol::fromQualString(symbolS),
-                                    inputNode->inputs(), /*num_outputs*/ 1);
+    torch::jit::Node *fusedNode;
+    if (symbolS == "glow::fused_broadcast_cat_rc") {
+      auto *batchIndices = node->namedInput("batchIndices");
+      std::vector<torch::jit::Value *> broadcastCatInputs;
+      broadcastCatInputs.insert(broadcastCatInputs.end(),
+                                inputNode->inputs().begin(),
+                                inputNode->inputs().end());
+      broadcastCatInputs.emplace_back(batchIndices);
+      fusedNode = graph->create(torch::jit::Symbol::fromQualString(symbolS),
+                                broadcastCatInputs, 1);
+    } else {
+      fusedNode = graph->create(torch::jit::Symbol::fromQualString(symbolS),
+                                inputNode->inputs(), /*num_outputs*/ 1);
+    }
 
     fusedNode->i_(torch::jit::attr::dim, dim);
-    fusedNode->insertBefore(inputNode);
+    fusedNode->insertBefore(node);
     fusedNode->output()->copyMetadata(node->output());
     node->output()->replaceAllUsesWith(fusedNode->output());
   }
@@ -487,7 +502,7 @@ void unfuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
 }
 
 // Unfuse glow::fused_stack, glow::fused_broadcast_cat,
-// glow::fused_broadcast_stack
+// glow::fused_broadcast_stack, glow::fused_broadcast_cat_rc
 void unfuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
   auto block = graph->block();
   for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
@@ -495,6 +510,7 @@ void unfuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
     const auto kind = node->kind();
     if (kind != c10::Symbol::fromQualString("glow::fused_stack") &&
         kind != c10::Symbol::fromQualString("glow::fused_broadcast_cat") &&
+        kind != c10::Symbol::fromQualString("glow::fused_broadcast_cat_rc") &&
         kind != c10::Symbol::fromQualString("glow::fused_broadcast_stack")) {
       continue;
     }
@@ -504,6 +520,9 @@ void unfuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
     } else if (kind ==
                c10::Symbol::fromQualString("glow::fused_broadcast_cat")) {
       symbolS = "fb::broadcast_cat";
+    } else if (kind ==
+               c10::Symbol::fromQualString("glow::fused_broadcast_cat_rc")) {
+      symbolS = "fb::broadcast_cat_rc";
     } else {
       // kind == c10::Symbol::fromQualString("glow::fused_broadcast_stack")
       symbolS = "fb::broadcast_stack";
@@ -513,14 +532,28 @@ void unfuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
                                     ->output()
                                     ->setType(at::IntType::get());
     dimVal->node()->i_(at::attr::value, dim);
-    torch::jit::Value *inputs =
-        graph->create(at::prim::ListConstruct, node->inputs())
-            ->output()
-            ->setType(at::ListType::ofTensors());
+    torch::jit::Value *inputs;
+    torch::jit::Node *unfusedConcat;
+    if (symbolS == "fb::broadcast_cat_rc") {
+      std::vector<torch::jit::Value *> broadcastCatTensors;
+      broadcastCatTensors.insert(broadcastCatTensors.end(),
+                                 node->inputs().begin(),
+                                 node->inputs().end() - 1);
+      inputs = graph->create(at::prim::ListConstruct, broadcastCatTensors)
+                   ->output()
+                   ->setType(at::ListType::ofTensors());
+      auto *batchInds = node->inputs().back();
+      unfusedConcat = graph->create(torch::jit::Symbol::fromQualString(symbolS),
+                                    {inputs, dimVal, batchInds}, 1);
+    } else {
+      inputs = graph->create(at::prim::ListConstruct, node->inputs())
+                   ->output()
+                   ->setType(at::ListType::ofTensors());
+      unfusedConcat = graph->create(torch::jit::Symbol::fromQualString(symbolS),
+                                    {inputs, dimVal}, 1);
+    }
     inputs->node()->insertBefore(node);
     dimVal->node()->insertBefore(node);
-    auto unfusedConcat = graph->create(
-        torch::jit::Symbol::fromQualString(symbolS), {inputs, dimVal}, 1);
     unfusedConcat->insertBefore(node);
     unfusedConcat->output()->copyMetadata(node->output());
     node->output()->replaceAllUsesWith(unfusedConcat->output());

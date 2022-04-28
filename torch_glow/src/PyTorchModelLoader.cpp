@@ -1458,6 +1458,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"glow::fused_broadcast_cat"},
        &PyTorchModelLoader::loadFusedBroadcastConcat,
        &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"glow::fused_broadcast_cat_rc"},
+       &PyTorchModelLoader::loadFusedBroadcastConcatRC,
+       &PyTorchModelLoader::correctTypeAlreadySet},
       {{"glow::fused_broadcast_stack"},
        &PyTorchModelLoader::loadFusedBroadcastStack,
        &PyTorchModelLoader::correctTypeAlreadySet},
@@ -4228,10 +4231,15 @@ static inline at::ScalarType promote_skip_undefined(at::ScalarType a,
 /// half, double] will be double. Similar to at::result_type().
 static Expected<at::ScalarType>
 getHigherType(PyTorchModelLoader *loader,
-              const c10::ArrayRef<const torch::jit::Value *> &values) {
+              const c10::ArrayRef<const torch::jit::Value *> &values,
+              size_t valueCount) {
+  RETURN_ERR_IF_NOT(valueCount <= values.size(),
+                    strFormat("Fewer values(%lu) than valueCount(%lu)",
+                              values.size(), valueCount));
   at::ScalarType higherType = at::ScalarType::Undefined;
-  for (auto v : values) {
+  for (auto i = 0; i < valueCount; i++) {
     at::ScalarType dtype;
+    auto *v = values[i];
     ASSIGN_VALUE_OR_RETURN_ERR(dtype, loader->getCorrectTypeMapping(v));
     if (dtype != at::ScalarType::QInt8 && dtype != at::ScalarType::QUInt8) {
       higherType = promote_skip_undefined(higherType, dtype);
@@ -4247,10 +4255,16 @@ getHigherType(PyTorchModelLoader *loader,
 /// error on failures, otherwise the created concat node reference.
 static Expected<std::pair<NodeValue, at::ScalarType>>
 createConcatNode(PyTorchModelLoader *loader, Function &F,
-                 const torch::jit::Node *ptNode, bool isStack,
-                 bool doBroadcast) noexcept {
+                 const torch::jit::Node *ptNode, bool isStack, bool doBroadcast,
+                 bool requireCoalescing = false) noexcept {
+
   std::vector<glow::NodeValue> inputs;
-  for (auto *ptInput : ptNode->inputs()) {
+  glow::NodeValue batchIndices;
+
+  auto numInputs =
+      requireCoalescing ? ptNode->inputs().size() - 1 : ptNode->inputs().size();
+  for (size_t i = 0; i < numInputs; i++) {
+    auto *ptInput = ptNode->inputs()[i];
     glow::NodeValue nodeVal;
     ASSIGN_VALUE_OR_RETURN_ERR(nodeVal,
                                loader->getGlowNodeValueForValue(ptInput));
@@ -4262,7 +4276,20 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
     }
     inputs.push_back(nodeVal);
   }
-
+  if (requireCoalescing) {
+    auto *batchIndicesInput = ptNode->inputs()[numInputs];
+    if (loader->hasGlowNodeValueForValue(batchIndicesInput)) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          batchIndices, loader->getGlowNodeValueForValue(batchIndicesInput));
+      requireCoalescing &= !batchIndices.dims().empty();
+    } else {
+      requireCoalescing = false;
+    }
+  }
+  RETURN_ERR_IF_NOT(!requireCoalescing ||
+                        (requireCoalescing && batchIndices.dims().size() == 1),
+                    strFormat("Only support 1-d batchIndices but got %ld dims",
+                              batchIndices.dims().size()));
   RETURN_ERR_IF_NOT(inputs.size() > 0, "No non-empty inputs were provided!");
 
   // Get number of input dimensions
@@ -4284,8 +4311,8 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
 
   at::ScalarType higherType = at::ScalarType::Undefined;
   glow::ElemKind higherKind;
-  ASSIGN_VALUE_OR_RETURN_ERR(higherType,
-                             getHigherType(loader, ptNode->inputs()));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      higherType, getHigherType(loader, ptNode->inputs(), numInputs));
   if (higherType != at::ScalarType::Undefined) {
     higherKind = scalarTypeToElemKind(higherType);
   }
@@ -4322,6 +4349,16 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
       }
     }
 
+    // if require coalescing, broadcast tensors with smaller dim_0 and broadcast
+    // dim_0 to match index size
+    if (requireCoalescing) {
+      if (input.dims()[0] < batchIndices.dims()[0]) {
+        needBroadcast[i] = true;
+        noBroadcastNeeded = false;
+      }
+      bcastShape[0] = batchIndices.dims()[0];
+    }
+
     if (higherType == at::ScalarType::Undefined) {
       continue;
     } else if (isQuantizedElemKind(higherKind)) {
@@ -4351,21 +4388,39 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
 
   // Helper function for concat and using Tile ops to expand.
   auto addConcatAndBroadcastNode =
-      [&](const std::vector<glow::NodeValue> &nodes, const std::string &key) {
+      [&](const std::vector<glow::NodeValue> &nodes, const std::string &key,
+          bool requireCoalescing) {
         glow::NodeValue output;
         if (nodes.size() > 1) {
-          auto *concatNode = F.createConcat("cat_" + key, nodes, dim);
+          glow::ConcatNode *concatNode;
+          if (requireCoalescing) {
+            std::vector<glow::NodeValue> concatInputs;
+            for (size_t i = 0; i < nodes.size(); i++) {
+              auto indexed = F.createGather(strFormat("index_%lu_", i) + key,
+                                            nodes[i], batchIndices, 0)
+                                 ->getResult();
+              concatInputs.emplace_back(indexed);
+            }
+            concatNode = F.createConcat("cat_" + key, concatInputs, dim);
+          } else {
+            concatNode = F.createConcat("cat_" + key, nodes, dim);
+          }
           output = concatNode->getResult();
         } else if (nodes.size() == 1) {
           output = nodes[0];
+          if (requireCoalescing) {
+            output = F.createGather("index_" + key, nodes[0], batchIndices, 0)
+                         ->getResult();
+          }
         } else {
           // Should not come to this branch, trust downstream to handle errors
           return output;
         }
 
         for (int d = 0; d < numInputDims; ++d) {
-          if ((d != dim || isStack) && output.dims()[d] == 1 &&
-              bcastShape[d] > 1) {
+          if ((output.dims()[d] == 1 && bcastShape[d] > 1) ||
+              (d == 0 && requireCoalescing &&
+               bcastShape[d] > output.dims()[d])) {
             output = F.createTile("tile_" + key + "_" + std::to_string(d),
                                   output, bcastShape[d], /* tile */
                                   d /* axis */)
@@ -4389,8 +4444,8 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
     auto key = ss.str();
     if (!partialConcatInputs.empty() &&
         (!needBroadcast[i] || key != prevConcatKey)) {
-      finalConcatInputs.emplace_back(
-          addConcatAndBroadcastNode(partialConcatInputs, key));
+      finalConcatInputs.emplace_back(addConcatAndBroadcastNode(
+          partialConcatInputs, key, requireCoalescing));
       partialConcatInputs.clear();
     }
     if (needBroadcast[i]) {
@@ -4406,8 +4461,8 @@ createConcatNode(PyTorchModelLoader *loader, Function &F,
   }
   // In cast the last nodes (1 or more) need concat and broadcast
   if (!partialConcatInputs.empty()) {
-    finalConcatInputs.emplace_back(
-        addConcatAndBroadcastNode(partialConcatInputs, prevConcatKey));
+    finalConcatInputs.emplace_back(addConcatAndBroadcastNode(
+        partialConcatInputs, prevConcatKey, requireCoalescing));
   }
 
   std::pair<NodeValue, at::ScalarType> pp = {
@@ -4429,6 +4484,37 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
                              createConcatNode(this, F_, ptNode,
                                               false /* isStack */,
                                               false /* doBroadcast */));
+  RETURN_IF_ERR(addValueMapping(outputs[0], concatAndHigherType.first));
+
+  if (concatAndHigherType.second != at::ScalarType::Undefined) {
+    RETURN_IF_ERR(
+        setCorrectTypeMapping(outputs[0], concatAndHigherType.second));
+  } else {
+    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+  }
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadFusedBroadcastConcatRC(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  // In the case of a single input, just return it.
+  if (inputs.size() == 1) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+    RETURN_IF_ERR(addValueMapping(outputs[0], input));
+    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
+    return Error::success();
+  }
+  std::pair<NodeValue, at::ScalarType> concatAndHigherType;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      concatAndHigherType,
+      createConcatNode(this, F_, ptNode, false /* isStack */,
+                       true /* doBroadcast */, true /* requireCoalescing */));
   RETURN_IF_ERR(addValueMapping(outputs[0], concatAndHigherType.first));
 
   if (concatAndHigherType.second != at::ScalarType::Undefined) {

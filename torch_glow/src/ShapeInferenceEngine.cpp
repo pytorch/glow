@@ -361,6 +361,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
        ShapeInference(&fusedBroadcastStack, &SI::addShapeDefault)},
       {"glow::fused_broadcast_cat",
        ShapeInference(&fusedBroadcastConcat, &SI::addShapeDefault)},
+      {"glow::fused_broadcast_cat_rc",
+       ShapeInference(&fusedBroadcastConcatRC, &SI::addShapeDefault)},
       {"glow::fused_split",
        ShapeInference(&fusedSplit, &SI::addShapeDefaultList)},
       {"quantized::embedding_bag_byte_rowwise_offsets",
@@ -1524,6 +1526,84 @@ ShapeInferenceEngine::fusedBroadcastConcat(const MetaStack &variableMetas,
         output.shapeOrIntValues[j] = s[j];
       }
     }
+  }
+  return output;
+}
+
+Expected<TensorOutput>
+ShapeInferenceEngine::fusedBroadcastConcatRC(const MetaStack &variableMetas,
+                                             const torch::jit::Node *node) {
+
+  int64_t dim = node->i(at::attr::dim);
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
+
+  TensorOutput output;
+  output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
+  output.dtype = variableMetas[0].dtype;
+  if (variableMetas.size() == 1) {
+    return output;
+  }
+
+  /// Convert negative dimension to positive, then check the dim range.
+  int64_t inDims = output.shapeOrIntValues.size();
+  dim = at::maybe_wrap_dim(dim, inDims);
+  auto batchIndicesShape =
+      variableMetas[variableMetas.size() - 1].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(batchIndicesShape.size() == 1,
+                    "Should have batchIndices input");
+  auto requestCoalescing = batchIndicesShape[0] > 1;
+  /// Validating the input shapes
+  bool goodShapes = true;
+  for (int i = 1; i < variableMetas.size() - 1; ++i) {
+    const auto &s = variableMetas[i].shape<TensorShape>();
+    if (output.shapeOrIntValues.size() != s.size()) {
+      goodShapes = false;
+    } else {
+      for (int j = 0; j < s.size(); ++j) {
+        if (j != dim && output.shapeOrIntValues[j] != s[j] &&
+            output.shapeOrIntValues[j] != 1 && s[j] != 1 &&
+            (!requestCoalescing || (requestCoalescing && j != 0))) {
+          goodShapes = false;
+          break;
+        }
+      }
+      if (requestCoalescing && s[0] > batchIndicesShape[0]) {
+        goodShapes = false;
+        break;
+      }
+    }
+    if (!goodShapes) {
+      break;
+    }
+  }
+
+  if (!goodShapes) {
+    std::ostringstream ss;
+    ss << "Got bad input shapes:";
+    for (const auto &vm : variableMetas) {
+      ss << "  [" << folly::join(",", vm.shape<TensorShape>()) << "]";
+    }
+    ss << " at node " << *node;
+    return MAKE_ERR(ss.str());
+  }
+
+  /// Handle multiple inputs cases
+  for (int i = 1; i < variableMetas.size() - 1; ++i) {
+    const TensorShape &s = variableMetas[i].shape<TensorShape>();
+    output.dtype = promote_skip_undefined(output.dtype, variableMetas[i].dtype);
+    for (int j = 0; j < inDims; j++) {
+      if (j == dim) {
+        output.shapeOrIntValues[j] += s[j];
+      } else if (s[j] != 1) {
+        output.shapeOrIntValues[j] = s[j];
+      }
+    }
+  }
+  if (requestCoalescing) {
+    output.shapeOrIntValues[0] = batchIndicesShape[0];
   }
   return output;
 }
