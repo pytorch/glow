@@ -274,9 +274,14 @@ private:
   // Shape inference for glow::fused_stack
   static Expected<TensorOutput> fusedStack(const MetaStack &variableMetas,
                                            const torch::jit::Node *node);
+  // Shape inference for glow::fused_broadcast_stack
   static Expected<TensorOutput>
   fusedBroadcastStack(const MetaStack &variableMetas,
                       const torch::jit::Node *node);
+  // Shape inference for glow::fused_broadcast_stack_rc
+  static Expected<TensorOutput>
+  fusedBroadcastStackRC(const MetaStack &variableMetas,
+                        const torch::jit::Node *node);
   // Shape inference for glow::fused_split
   static Expected<TensorListOutput> fusedSplit(const MetaStack &variableMetas);
   // Shape inference for quantized::embedding_bag_byte_rowwise_offsets

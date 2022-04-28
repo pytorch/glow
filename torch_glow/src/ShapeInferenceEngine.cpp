@@ -359,6 +359,8 @@ ShapeInferenceEngine::buildShapeSymbolMapping() {
       {"glow::fused_stack", ShapeInference(&fusedStack, &SI::addShapeDefault)},
       {"glow::fused_broadcast_stack",
        ShapeInference(&fusedBroadcastStack, &SI::addShapeDefault)},
+      {"glow::fused_broadcast_stack_rc",
+       ShapeInference(&fusedBroadcastStackRC, &SI::addShapeDefault)},
       {"glow::fused_broadcast_cat",
        ShapeInference(&fusedBroadcastConcat, &SI::addShapeDefault)},
       {"glow::fused_broadcast_cat_rc",
@@ -1899,34 +1901,35 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas,
   return output;
 }
 
-/**
- * glow::fused_stack[dim=1](Tensor self, Tensor mat1, Tensor mat2, ...)
- * variableMetas: 0: self, 1: mat1, 2: mat2, ...
- */
-Expected<TensorOutput>
-ShapeInferenceEngine::fusedBroadcastStack(const MetaStack &variableMetas,
-                                          const torch::jit::Node *node) {
-
+Error validateConcatShape(const MetaStack &variableMetas, TensorOutput output,
+                          const torch::jit::Node *node,
+                          bool enableRequestCoalescing) {
   int64_t dim = node->i(at::attr::dim);
-
-  RETURN_ERR_IF_NOT(
-      variableMetas.size() >= 1,
-      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
-
-  TensorOutput output;
-  output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
-  output.dtype = variableMetas[0].dtype;
-
-  /// Validating the input shapes
+  auto num_inputs =
+      enableRequestCoalescing ? variableMetas.size() - 1 : variableMetas.size();
   bool goodShapes = true;
-  for (int i = 1; i < variableMetas.size(); ++i) {
+  TensorShape batchIndicesShape;
+  if (enableRequestCoalescing) {
+    batchIndicesShape =
+        variableMetas[variableMetas.size() - 1].shape<TensorShape>();
+    RETURN_ERR_IF_NOT(batchIndicesShape.size() == 1,
+                      "Should have batchIndices input");
+  }
+  for (int i = 1; i < num_inputs; ++i) {
     const auto &s = variableMetas[i].shape<TensorShape>();
     if (output.shapeOrIntValues.size() != s.size()) {
       goodShapes = false;
     } else {
       for (int j = 0; j < s.size(); ++j) {
         if (j != dim && output.shapeOrIntValues[j] != s[j] &&
-            output.shapeOrIntValues[j] != 1 && s[j] != 1) {
+            output.shapeOrIntValues[j] != 1 && s[j] != 1 &&
+            (!enableRequestCoalescing || (enableRequestCoalescing && j != 0))) {
+          goodShapes = false;
+          break;
+        }
+      }
+      if (enableRequestCoalescing) {
+        if (s[0] > batchIndicesShape[0]) {
           goodShapes = false;
           break;
         }
@@ -1946,6 +1949,29 @@ ShapeInferenceEngine::fusedBroadcastStack(const MetaStack &variableMetas,
     ss << " at node " << *node;
     return MAKE_ERR(ss.str());
   }
+  return Error::success();
+}
+
+/**
+ * glow::fused_broadcast_stack[dim=1](Tensor self, Tensor mat1, Tensor mat2,
+ * ...) variableMetas: 0: self, 1: mat1, 2: mat2, ...
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::fusedBroadcastStack(const MetaStack &variableMetas,
+                                          const torch::jit::Node *node) {
+
+  int64_t dim = node->i(at::attr::dim);
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
+
+  TensorOutput output;
+  output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
+  output.dtype = variableMetas[0].dtype;
+
+  /// Validating the input shapes
+  RETURN_IF_ERR(validateConcatShape(variableMetas, output, node, false));
 
   int64_t inDims = output.shapeOrIntValues.size();
 
@@ -1961,6 +1987,46 @@ ShapeInferenceEngine::fusedBroadcastStack(const MetaStack &variableMetas,
   }
   output.shapeOrIntValues.insert(output.shapeOrIntValues.begin() + dim,
                                  variableMetas.size());
+  return output;
+}
+
+/**
+ * glow::fused_broadcast_stack_rc[dim=1](Tensor self, Tensor mat1, Tensor mat2,
+ * ...) variableMetas: 0: self, 1: mat1, 2: mat2, ...
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::fusedBroadcastStackRC(const MetaStack &variableMetas,
+                                            const torch::jit::Node *node) {
+
+  int64_t dim = node->i(at::attr::dim);
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
+  auto batchIndicesShape =
+      variableMetas[variableMetas.size() - 1].shape<TensorShape>();
+  RETURN_ERR_IF_NOT(batchIndicesShape.size() == 1,
+                    "Expected 1d batchIndices input");
+  TensorOutput output;
+  output.shapeOrIntValues = variableMetas[0].shape<TensorShape>();
+  output.dtype = variableMetas[0].dtype;
+
+  /// Validating the input shapes
+  RETURN_IF_ERR(validateConcatShape(variableMetas, output, node, true));
+
+  /// Handle multiple inputs cases
+  int64_t inDims = output.shapeOrIntValues.size();
+  for (int i = 1; i < variableMetas.size() - 1; ++i) {
+    const auto &s = variableMetas[i].shape<TensorShape>();
+    output.dtype = promote_skip_undefined(output.dtype, variableMetas[i].dtype);
+    for (int j = 0; j < inDims; j++) {
+      if (s[j] != 1) {
+        output.shapeOrIntValues[j] = s[j];
+      }
+    }
+  }
+  output.shapeOrIntValues[0] = batchIndicesShape[0];
+  output.shapeOrIntValues.insert(output.shapeOrIntValues.begin() + dim,
+                                 variableMetas.size() - 1);
   return output;
 }
 
