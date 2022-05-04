@@ -62,6 +62,9 @@ class ExecutionContext {
   /// Perf counters (optional) recorded during this run.
   void *perfData_{nullptr};
 
+  /// Execution state ID
+  int64_t stateId_{-1};
+
 public:
   ExecutionContext()
       : placeholderBindings_(glow::make_unique<PlaceholderBindings>()) {}
@@ -179,6 +182,10 @@ public:
       traceContext->logTraceEvent(name, level, type, std::move(args));
     }
   }
+
+  void setStateId(int64_t stateId) { stateId_ = stateId; }
+
+  int64_t getStateId() { return stateId_; }
 };
 
 } // namespace glow

@@ -31,7 +31,7 @@ class NetworkExecutionState final {
 public:
   /// Constructor.
   explicit NetworkExecutionState(const DAGNode *root, bool enableDRT,
-                                 bool enableP2P);
+                                 bool enableP2P, int64_t state_id);
 
   const DAGNode *getRoot() { return root_; }
 
@@ -100,6 +100,8 @@ public:
 private:
   /// The run identifier for this execution of a DAG.
   RunIdentifierTy runId_;
+
+  int64_t stateId_{-1};
 
   /// The callback that should be called when execution is done.
   ResultCBTy cb_;

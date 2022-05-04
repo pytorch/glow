@@ -37,9 +37,10 @@ void NetworkExecutionStatePool::addNewState(
 }
 
 NetworkExecutionState::NetworkExecutionState(const DAGNode *root,
-                                             bool enableDRT, bool enableP2P)
-    : enableDRT_(enableDRT), enableP2P_(enableP2P), inflightNodes_(0),
-      module_(root->module), root_(root) {}
+                                             bool enableDRT, bool enableP2P,
+                                             int64_t stateId)
+    : stateId_(stateId), enableDRT_(enableDRT), enableP2P_(enableP2P),
+      inflightNodes_(0), module_(root->module), root_(root) {}
 
 NetworkExecutionState::~NetworkExecutionState() {
   // Free all allocated buffers.
@@ -249,7 +250,7 @@ NetworkExecutionState::getUniqueNodeContextPtr(const DAGNode *node) {
 
   DCHECK(ctxIt != intermediateContexts_.end())
       << "Input bindings not found but should exist!";
-
+  ctxIt->second->setStateId(stateId_);
   return std::move(ctxIt->second);
 }
 
