@@ -2119,6 +2119,7 @@ Error TFLiteModelLoader::loadSoftmax(const tflite::Operator *op,
     }
 
     // Create float Softmax regardless of the type defined in the model.
+    // Wrap SoftMax between Flatten to ensure kernel compatibility.
     auto *FN =
         F_->createFlattenV1("reshapeInput", input, input.dims().size() - 1);
     auto *SMN = F_->createSoftMax(opInfo.name, FN, selected, nullptr, beta);
@@ -2134,6 +2135,7 @@ Error TFLiteModelLoader::loadSoftmax(const tflite::Operator *op,
       output = F_->createQuantize(opInfo.name + ".Quantize", output, outTy);
     }
   } else {
+    // Wrap SoftMax between Flatten to ensure kernel compatibility.
     auto *FN =
         F_->createFlattenV1("reshapeInput", input, input.dims().size() - 1);
     TypeRef intermOutTy =
