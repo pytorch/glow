@@ -236,8 +236,8 @@ void NetworkExecutionState::init(
     // once we are done with it.
     std::unique_ptr<Backend> newBackend(createBackend(backendName));
 
-    EXIT_ON_ERR(
-        newBackend->bindContexts(contexts, root_, enableP2P_, enableDRT_));
+    EXIT_ON_ERR(newBackend->bindContexts(contexts, root_, enableP2P_,
+                                         enableDRT_, stateId_));
   }
   initialized_ = true;
 }

@@ -248,7 +248,7 @@ public:
   /// DeviceManager.
   virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
                              const runtime::DAGNode *root, bool enableP2P,
-                             bool enableDRT) {
+                             bool enableDRT, int64_t stateId) {
     return Error::success();
   }
 

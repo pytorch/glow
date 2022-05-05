@@ -2163,7 +2163,9 @@ unsigned NNPIBackend::getContextCount(CompilationContext &cctx) const {
 
 Error NNPIBackend::bindContexts(
     llvm::ArrayRef<runtime::ContextBinding> bindings,
-    const runtime::DAGNode *root, bool enableP2P, bool enableDRT) {
+    const runtime::DAGNode *root, bool enableP2P, bool enableDRT,
+    int64_t stateId) {
+  (void)stateId;
   if (backendOptions_.dumpRuntime) {
     DotWriter::clear();
     DotWriter::addSubGraph("Host", "Host");

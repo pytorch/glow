@@ -88,7 +88,7 @@ public:
 
   virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
                              const runtime::DAGNode *root, bool enableP2P,
-                             bool enableDRT) override;
+                             bool enableDRT, int64_t stateId) override;
 
   /// Get the number of copies of inputs/outputs that will be reserved on a
   /// device per network.
