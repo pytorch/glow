@@ -110,7 +110,7 @@ add_definitions("-DGIT_TAG=\"${GIT_TAG}\"")
 # Compile definition for Glow build date in Y-M-D format.
 string(TIMESTAMP GLOW_BUILD_DATE "%Y-%m-%d")
 add_definitions("-DGLOW_BUILD_DATE=\"${GLOW_BUILD_DATE}\"")
-add_definitions("-DGLOW_VERSION=\"${GLOW_BUILD_DATE} (${GIT_SHA1}) (${GIT_TAG})\"")
+add_definitions("-DGLOW_VERSION=\"${GIT_DATE} (${GIT_SHA1}) (${GIT_TAG})\"")
 
 if(GLOW_USE_PNG_IF_REQUIRED)
   find_package(PNG)
