@@ -68,7 +68,7 @@ NodeValue Storage::getNthInput(unsigned idx) {
   llvm_unreachable("Invalid index");
 }
 
-llvm::StringRef Storage::getOutputName(unsigned idx) const {
+std::string Storage::getOutputName(unsigned idx) const {
   if (idx == 0) {
     return "Output";
   }

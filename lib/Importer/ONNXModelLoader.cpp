@@ -5551,21 +5551,22 @@ Error ONNXModelLoader::loadLoop(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
-Expected<TypeRef>
-ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
-                                        ArgumentDictionaryTy &dict) {
+Expected<TypeRef> ONNXModelLoader::loadTypeFromAttributes(
+    unsigned resNo, ArgumentDictionaryTy &dict, const std::string &addPrefix) {
   // Load ElemKind.
   std::string elemKindStr;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      elemKindStr, loadStr(dict[getTypeAttrID(resNo, elemKindSignifier)]));
+      elemKindStr,
+      loadStr(dict[getTypeAttrID(resNo, elemKindSignifier, false, addPrefix)]));
   const ElemKind k = Type::getElementKindFromName(elemKindStr);
 
   // Load Shape. Note that we allow for empty shapes here because 0 dimensional
   // shapes are allowed (representing scalars).
   std::vector<dim_t> shape;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      shape, getShape<dim_t>(dict[getTypeAttrID(resNo, shapeSignifier)],
-                             /* allowEmptyShape */ true));
+      shape, getShape<dim_t>(
+                 dict[getTypeAttrID(resNo, shapeSignifier, false, addPrefix)],
+                 /* allowEmptyShape */ true));
 
   // Load strides. Note that we allow for empty strides here because 0
   // dimensional shapes are allowed (representing scalars).
@@ -5586,10 +5587,12 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
   // quantized Type.
   float scale;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      scale, loadFloat(dict[getTypeAttrID(resNo, qScaleSignifier)]));
+      scale,
+      loadFloat(dict[getTypeAttrID(resNo, qScaleSignifier, false, addPrefix)]));
   int32_t offset;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      offset, loadInt(dict[getTypeAttrID(resNo, qOffsetSignifier)]));
+      offset,
+      loadInt(dict[getTypeAttrID(resNo, qOffsetSignifier, false, addPrefix)]));
 
   // If we have a scale of dummyScale, then this must be a dummy pair of
   // scale/offset. Look up the actual scale/offset to use as previously loaded,

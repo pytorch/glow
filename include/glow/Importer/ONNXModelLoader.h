@@ -97,7 +97,8 @@ class ONNXModelLoader
   /// relevant members of a type, (ElemKind, Shape, and Scale and Offset if
   /// ElemKind is quantized) with \p resNo.
   Expected<TypeRef> loadTypeFromAttributes(unsigned resNo,
-                                           ArgumentDictionaryTy &dict);
+                                           ArgumentDictionaryTy &dict,
+                                           const std::string &addPrefix = "");
 
   /// If this is a custom Glow op that was exported via NodeGen automatic export
   /// logic, try to load the op. \returns Expected<true> if the op is

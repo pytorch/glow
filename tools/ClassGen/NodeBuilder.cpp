@@ -99,6 +99,13 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   for (const auto &paramName : ctorTypeParams_) {
     os << ", TypeRef " << paramName << " ";
   }
+  for (const auto &op : variableOutputMembers_) {
+    // For outputs, the type is different llvm::ArrayRef<TypeRef> instead of
+    // NodeValueArrayRef, so we hardcode it instead of calling
+    // 'getCtorArgTypename'
+    os << ", llvm::ArrayRef<TypeRef>"
+       << " " << op.second;
+  }
 
   // The enum 'Mode' parameter:
   if (!enum_.empty()) {
@@ -143,8 +150,17 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // The constructor body:
   os << " {\n";
+  //  -> fix outputs.
   for (auto &RT : nodeOutputs_) {
     os << "    addResult(" << RT.first << ");\n";
+  }
+  //  -> variable outputs.
+  for (const auto &op : variableOutputMembers_) {
+    os << "    " << op.second << "Size_ = " << op.second << ".size();\n";
+    os << "    for (size_t idx = 0, e = " << op.second
+       << ".size(); idx < e; ++idx) {\n"
+       << "        addResult(" << op.second << "[idx]);\n"
+       << "    }\n";
   }
 
   for (const auto &op : members_) {
@@ -182,6 +198,10 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
   for (const auto &op : members_) {
     os << "  " << getStorageTypename(&op.first) << " " << op.second << "_;\n";
   }
+
+  for (const auto &op : variableOutputMembers_) {
+    os << "  unsigned " << op.second << "Size_;\n";
+  }
 }
 
 void NodeBuilder::emitMemberGetterSetter(std::ostream &os,
@@ -205,13 +225,40 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
        << "_; }\n";
   }
 
+  // -> fixed outputs.
   unsigned idx = 0;
   for (const auto &op : nodeOutputs_) {
+    os << "  // Methods for output " << op.second << "\n";
     os << "  NodeValue get" << op.second << "() { return getNthResult(" << idx
        << "); }\n";
     os << "  const NodeValue get" << op.second
        << "() const { return getNthResult(" << idx << "); }\n";
     idx++;
+  }
+  // -> variable outputs.
+  if (variableOutputMembers_.size()) {
+    std::string indexShift = std::to_string(nodeOutputs_.size());
+    for (const auto &op : variableOutputMembers_) {
+      os << "  // Methods for variable output " << op.second << "\n";
+      // Returns all the values of the variable output.
+      os << "  const std::vector<NodeValue> get" << op.second << "() const {\n"
+         << "    unsigned_t indexShift = " << indexShift << ";\n"
+         << "    std::vector<NodeValue> valueList;\n"
+         << "    for (unsigned i = 0; i < " << op.second << "Size_; i++) {\n"
+         << "      valueList.push_back(getNthResult(indexShift + i));\n"
+         << "    }\n"
+         << "    return valueList;\n"
+         << "  }\n";
+      // Returns the nth value of the variable output.
+      os << "  const NodeValue get" << op.second << "Nth(unsigned i) const {\n"
+         << "    return getNthResult(" << indexShift << " + i);\n"
+         << "  }\n";
+      // Returns the number of elements for the variable output.
+      os << "  unsigned get" << op.second << "Size() const {\n"
+         << "    return " << op.second << "Size_;\n"
+         << "  }\n";
+      indexShift += " + " + op.second + "Size_";
+    }
   }
 
   for (const auto &op : members_) {
@@ -293,12 +340,23 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << "  llvm_unreachable(\"Invalid index\");\n}\n";
 
-  os << "\nllvm::StringRef " << name_
+  os << "\nstd::string " << name_
      << "Node::getOutputName(unsigned idx) const {\n";
+  // Handle fixed outputs.
   for (size_t i = 0; i < nodeOutputs_.size(); i++) {
     os << "  if (idx == " << i << ") { return \"" << nodeOutputs_[i].second
        << "\"; }\n";
   }
+  // Handle variable outputs.
+  os << "  idx -= " << nodeOutputs_.size() << ";\n";
+  for (const auto &op : variableOutputMembers_) {
+    os << "  if (idx < " << op.second << "Size_) { \n"
+       << "    // Pick automatic name for now\n"
+       << "    return \"" << op.second << "\" + std::to_string(idx);\n"
+       << "  }\n";
+    os << "  idx -= " << op.second << "Size_;\n";
+  }
+
   os << "  llvm_unreachable(\"Invalid index\");\n}\n";
 }
 
@@ -352,9 +410,21 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   }
 
   // Generate description for outputs.
+  // --> Fix outputs.
   for (const auto &op : nodeOutputs_) {
     os << "  db.addParam(\"" << op.second << "\", *(get" << op.second
        << "().getType()));\n";
+  }
+  // --> variable outputs.
+  if (variableOutputMembers_.size()) {
+    for (const auto &op : variableOutputMembers_) {
+      os << "  for (unsigned i = 0; i < " << op.second << "Size_; i++) {\n"
+         << "   db.addParam(\"" << op.second
+         << "\" + std::to_string(i),"
+         // Get the type of the ith element of the variable output
+         << " *(get" << op.second << "Nth(i).getType()));\n"
+         << "  }\n";
+    }
   }
 
   os << "  return db;\n}\n";
@@ -363,11 +433,27 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 void NodeBuilder::emitCloner(std::ostream &os) const {
   os << "\nNode* " << name_ << "Node::clone() const {\n";
 
+  // Variable outputs
+  if (variableOutputMembers_.size()) {
+    os << "  unsigned_t variableOutIdx = " << nodeOutputs_.size() << ";\n"
+       << "  llvm::ArrayRef<TypeRef> typeArray(types_);\n";
+    for (const auto &op : variableOutputMembers_) {
+      os << "  llvm::ArrayRef<TypeRef> resultTypesOf" << op.second
+         << " = typeArray.slice(variableOutIdx, " << op.second << "Size_);\n"
+         << "  variableOutIdx += " << op.second << "Size_;\n";
+    }
+  }
+
   os << "  return new " << name_ << "Node(getName()";
 
   // Pass the external type arguments:
+  // -> fix outputs
   for (const auto &paramName : ctorTypeParams_) {
     os << ", get" << paramName << "().getType()";
+  }
+  // -> variable outputs
+  for (const auto &op : variableOutputMembers_) {
+    os << ", resultTypesOf" << op.second;
   }
 
   // The enum 'Mode' parameter:
@@ -393,7 +479,9 @@ static bool isIdentifierChar(char c) { return (c == '_' || isalnum(c)); }
 
 void NodeBuilder::emitEquator(std::ostream &os) const {
   os << "\nbool " << name_ << "Node::isEqual(const " << name_
-     << "Node &other) const {\n  return true";
+     << "Node &other) const {\n";
+
+  os << "  bool equal = true";
 
   if (!enum_.empty()) {
     os << " &&\n      getMode() == other.getMode()";
@@ -421,10 +509,21 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
     }
   }
 
+  // Fix outputs.
   for (int i = 0, e = nodeOutputs_.size(); i < e; i++) {
     os << " &&\n      getType(" << i << ") == other.getType(" << i << ")";
   }
-  os << ";\n}\n";
+  os << ";\n";
+
+  // Variable outputs.
+  if (variableOutputMembers_.size()) {
+    os << "  equal = equal && (getNumResults() == other.getNumResults());\n"
+       << "  for (unsigned i = " << nodeOutputs_.size()
+       << "; i < getNumResults(); i++) {\n"
+       << "    equal = equal && (getType(i) == other.getType(i));\n"
+       << "  }\n";
+  }
+  os << "  return equal;\n}\n";
 }
 
 static bool isVectorType(MemberType ty) {
@@ -550,7 +649,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  std::string getInputName(unsigned idx) const;\n"
      << "  NodeValue getNthInput(unsigned idx);\n"
      << "  void setNthInput(unsigned idx, NodeValue val);\n"
-     << "  llvm::StringRef getOutputName(unsigned idx) const;\n"
+     << "  std::string getOutputName(unsigned idx) const;\n"
      << "  bool hasSideEffects() const { return " << hasSideEffects_ << "; }\n"
      << "  bool isCanonical() const { return " << !isBackendSpecific_ << "; }\n"
      << "  bool isDataParallel() const { return " << isDataParallel_ << "; }\n"
@@ -624,6 +723,21 @@ void NodeBuilder::emitImportMethods(std::ostream &os) const {
          << ", dict));\n\n";
     }
   }
+  for (const auto &op : variableOutputMembers_) {
+    auto ty = getCtorArgTypename(MemberType::Unsigned);
+    os << "  " << ty << " " << op.second << "Size;\n"
+       << "   std::vector<TypeRef> " << op.second << "OutTyList;\n"
+
+       << "  ASSIGN_VALUE_OR_RETURN_ERR(" << op.second << "Size, loadAttribute<"
+       << ty << ">(dict.at(\"" << op.second << "Size\"), *this));\n"
+       << "  for (unsigned i = 0; i < " << op.second << "Size; i++) {\n"
+       << "    TypeRef OutTy;\n"
+       << "    ASSIGN_VALUE_OR_RETURN_ERR(OutTy, loadTypeFromAttributes(i, "
+          "dict, \""
+       << op.second << "_\"));\n"
+       << "    " << op.second << "OutTyList.push_back(OutTy);\n"
+       << "  }\n";
+  }
 
   // Load the members.
   for (const auto &op : members_) {
@@ -642,6 +756,9 @@ void NodeBuilder::emitImportMethods(std::ostream &os) const {
     if (hasCtorTypeParams(op.second)) {
       os << ", " << op.second << "OutTy";
     }
+  }
+  for (const auto &op : variableOutputMembers_) {
+    os << ", " << op.second << "OutTyList";
   }
   for (size_t i = 0, e = nodeInputs_.size(); i < e; i++) {
     auto &op = nodeInputs_[i];
@@ -675,25 +792,59 @@ void NodeBuilder::emitExportMethods(std::ostream &os) const {
   os << "  opProto->set_op_type(\"Glow_" << name_ << "\");\n";
   os << "  opProto->set_name(glow::legalizeName(N__->getName()));\n";
 
-  // Add all of the node's inputs.
-  for (const auto &op : nodeInputs_) {
-    os << "  opProto->add_input(N__->get" << op
-       << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
-    // Note: Add each input's type attributes so that other tools have easy
-    // visibility into types. This info may go ignored by the importer.
-    os << "  addTypeAttributes(opProto, N__, " << name_ << "Node::" << op
-       << "Idx, /* isInput */ true);\n";
-  }
+  // In order to manage variable inputs and outputs and export a clean ONNX
+  // model, the export is done with a generic code working on the Node object,
+  // the variability being well managed in the node getter function.
+  os << "  for(unsigned i=0; i<node->getNumInputs(); i++) {\n";
+  os << "    opProto->add_input(node->getNthInput(i).generateNodeOutputName(/* "
+        "stripResNoFor0thInput */ true));\n";
+  os << "    addTypeAttributes(opProto, N__, i, /* isInput */ true);\n";
+  os << "  }\n";
+  os << "  for(unsigned i=0; i<node->getNumResults(); i++) {\n";
+  os << "    "
+        "opProto->add_output(node->getNthResult(i).generateNodeOutputName(/* "
+        "stripResNoFor0thInput */ true));\n";
+  os << "    addTypeAttributes(opProto, N__, i, /* isInput */ false);\n";
+  os << "  }\n";
 
-  // Add all of the node's outputs.
-  for (const auto &op : nodeOutputs_) {
-    os << "  opProto->add_output(N__->get" << op.second
-       << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
-    // Note: export the type attributes even if not needed by the importer, so
-    // that other tools have easy visibility into types. This info may go
-    // ignored by the importer.
-    os << "  addTypeAttributes(opProto, N__, " << name_ << "Node::" << op.second
-       << "Idx, /* isInput */ false);\n";
+  // Variadic parameters are always the last params. But in case there are
+  // multiple variadic inputs or outputs, there is the need to know their index
+  // and size in the input or output list. This information is exported as
+  // extra attributes.
+  bool hasVariadicInput = false;
+  for (const auto &op : members_) {
+    if ((op.first).type != MemberType::VectorNodeValue) {
+      continue;
+    }
+    if (!hasVariadicInput) {
+      os << "  // Handle variadic inputs\n";
+      os << "  {\n";
+      os << "    unsigned_t index = " << nodeInputs_.size() << ";\n";
+      hasVariadicInput = true;
+    }
+    std::string sParamSize = "N__->get" + op.second + "().size()";
+    os << "    addValueAttribute(opProto, \"" << op.second
+       << "_Index\", index);\n";
+    os << "    addValueAttribute(opProto, \"" << op.second << "Size\", "
+       << sParamSize << ");\n";
+    os << "    index += " + sParamSize + ";\n";
+  }
+  if (hasVariadicInput) {
+    os << "  }\n";
+  }
+  if (variableOutputMembers_.size() > 0) {
+    os << "  // Handle variadic outputs\n";
+    os << "  {\n";
+    os << "    unsigned_t index = " << nodeOutputs_.size() << ";\n";
+    for (const auto &op : variableOutputMembers_) {
+      std::string sParamSize = "N__->get" + op.second + "Size()";
+      os << "    addValueAttribute(opProto, \"" << op.second
+         << "_Index\", index);\n";
+      os << "    addValueAttribute(opProto, \"" << op.second
+         << "Size\", " + sParamSize + ");\n";
+      os << "    index += " + sParamSize + ";\n";
+    }
+    os << "  }\n";
   }
 
   // Add any members the node has.

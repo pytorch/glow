@@ -189,7 +189,7 @@ const NodeValue Node::getNthResult(unsigned idx) const {
   return NodeValue(const_cast<Node *>(this), idx);
 }
 
-llvm::StringRef Node::getOutputName(unsigned idx) const {
+std::string Node::getOutputName(unsigned idx) const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
