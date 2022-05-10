@@ -2485,6 +2485,7 @@ DEF_ALL_WRITER_NODE(Truncate)
 DEF_ALL_WRITER_NODE(BatchedUnaryEmbeddingsBags)
 DEF_ALL_WRITER_NODE(IntNBitSplitEmbeddingBags)
 DEF_ALL_WRITER_NODE(IntNBitSplitEmbeddingWeightedBags)
+DEF_ALL_WRITER_NODE(PermutePooledEmbeddings)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

@@ -1062,6 +1062,19 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Offsets", "ElemKind::Int32ITy"});
 
+  BB.newInstr("PermutePooledEmbeddings")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("PooledEmbeddings", OperandKind::In)
+      .addOperand("OffsetDimList", OperandKind::In)
+      .addOperand("PermuteList", OperandKind::In)
+      .addOperand("InvOffsetDimList", OperandKind::In)
+      .addOperand("InvPermuteList", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"OffsetDimList", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"PermuteList", "ElemKind::Int64ITy"});
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

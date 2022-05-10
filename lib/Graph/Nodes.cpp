@@ -3040,6 +3040,32 @@ bool IntNBitSplitEmbeddingWeightedBagsNode::verify() const {
       getWeightsTys(), getIndices(), getIndiceWeight());
 }
 
+static bool verifyPermutePooledEmbeddingsNode(NodeValue dest,
+                                              NodeValue pooledEmbeddings,
+                                              NodeValue listOffsetDim,
+                                              NodeValue listPermute,
+                                              NodeValue /* listInvOffsetDim */,
+                                              NodeValue /* listInvPermute) */) {
+  bool isValid = checkType(
+      pooledEmbeddings,
+      llvm::ArrayRef<ElemKind>(
+          {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty}),
+      pooledEmbeddings.getNode());
+
+  isValid &= checkSameShape(dest, pooledEmbeddings, pooledEmbeddings.getNode());
+  isValid &=
+      checkType(listOffsetDim, ElemKind::Int64ITy, listOffsetDim.getNode());
+  isValid &= checkType(listPermute, ElemKind::Int64ITy, listPermute.getNode());
+
+  return isValid;
+}
+
+bool PermutePooledEmbeddingsNode::verify() const {
+  return verifyPermutePooledEmbeddingsNode(
+      getResult(), getPooledEmbeddings(), getOffsetDimList(), getPermuteList(),
+      getInvOffsetDimList(), getInvPermuteList());
+}
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//

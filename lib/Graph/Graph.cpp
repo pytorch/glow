@@ -3320,6 +3320,22 @@ Function::createIntNBitSplitEmbeddingWeightedBags(
       poolingMode, outputDtype));
 }
 
+PermutePooledEmbeddingsNode *Function::createPermutePooledEmbeddingsNode(
+    llvm::StringRef name, NodeValue pooledEmbeddings, NodeValue listOffsetDim,
+    NodeValue listPermute, NodeValue listInvOffsetDim,
+    NodeValue listInvPermute) {
+  ShapeVector outDims;
+  outDims.insert(outDims.end(), pooledEmbeddings.dims()[0]);
+  outDims.insert(outDims.end(), pooledEmbeddings.dims()[1]);
+
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(pooledEmbeddings.getType(), outDims);
+
+  return addNode(new PermutePooledEmbeddingsNode(
+      name, outTy, pooledEmbeddings, listOffsetDim, listPermute,
+      listInvOffsetDim, listInvPermute));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//
