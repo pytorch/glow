@@ -970,6 +970,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 IntNBitSplitEmbeddingWeightedBagsNode::IndiceWeightIdx) ==
                 ElemKind::Float16Ty);
 
+  case Kinded::Kind::PermutePooledEmbeddingsNodeKind:
+    return (NI.getInElemTy(PermutePooledEmbeddingsNode::OffsetDimListIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(PermutePooledEmbeddingsNode::PermuteListIdx) ==
+            ElemKind::Int64ITy);
+
   default:
     return false;
   }

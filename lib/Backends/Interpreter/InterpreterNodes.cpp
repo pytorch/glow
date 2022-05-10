@@ -6645,6 +6645,47 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsImpl(
   }
 }
 
+void BoundInterpreterFunction::fwdPermutePooledEmbeddingsInst(
+    const PermutePooledEmbeddingsInst *I) {
+  dispatchFloatingPointImpl(fwdPermutedPooledEmbeddingsInstImpl,
+                            I->getPooledEmbeddings()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdPermutedPooledEmbeddingsInstImpl(
+    const PermutePooledEmbeddingsInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto out = getTensor(I->getDest());
+  auto pooledEmbeddings = getTensor(I->getPooledEmbeddings());
+  auto listOffsetDim = getTensor(I->getOffsetDimList());
+  auto listPermute = getTensor(I->getPermuteList());
+
+  out->zero();
+
+  auto pooledEmbeddingsH = pooledEmbeddings->getHandle<ElemTy>();
+  auto listOffsetDimH = listOffsetDim->getHandle<int64_t>();
+  auto listPermuteH = listPermute->getHandle<int64_t>();
+  auto outH = out->getHandle<ElemTy>();
+
+  size_t numEmbeddings = listPermute->size();
+  size_t numBatches = pooledEmbeddingsH.dims()[0];
+  size_t totalDims = pooledEmbeddingsH.dims()[1];
+
+  size_t outIdx = 0;
+  for (size_t i = 0; i < numEmbeddings; i++) {
+    auto permuted = listPermuteH.raw(i);
+    for (size_t j = listOffsetDimH.raw(permuted);
+         j < listOffsetDimH.raw(permuted + 1); j++) {
+      for (size_t b = 0; b < numBatches; b++) {
+        outH.raw(b * totalDims + outIdx) =
+            pooledEmbeddingsH.raw(b * totalDims + j);
+      }
+      ++outIdx;
+    }
+  }
+}
+
 #define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
   switch (elemTy) {                                                            \
   case ElemKind::FloatTy:                                                      \

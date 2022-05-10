@@ -713,6 +713,8 @@ struct BlacklistInitializer {
        TestBlacklist::AnyDeviceAnyEngine},
       {"IntNBitSplitEmbeddingBagsSingle_Int4_MeanPooling/0",
        TestBlacklist::AnyDeviceAnyEngine},
+      {"PermutePooledEmbeddings_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"PermutePooledEmbeddings_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

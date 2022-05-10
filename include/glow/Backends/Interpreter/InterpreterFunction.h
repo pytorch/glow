@@ -495,6 +495,10 @@ private:
       int64_t poolingMode, Tensor *indiceWeights, int64_t totalDims,
       int64_t outputDType);
 
+  template <typename ElemTy>
+  void
+  fwdPermutedPooledEmbeddingsInstImpl(const PermutePooledEmbeddingsInst *I);
+
   ///@}
 };
 

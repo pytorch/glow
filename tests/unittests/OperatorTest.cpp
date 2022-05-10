@@ -21761,5 +21761,85 @@ TEST_P(OperatorTest,
       SplitEmbeddingSparseType::EST_FLOAT16, 0.005);
 }
 
+/// Test PermutePooledEmbeddings
+template <typename ElemTy>
+static void testPermutePooledEmbeddings(glow::PlaceholderBindings &bindings,
+                                        glow::Module &mod, glow::Function *F,
+                                        glow::ExecutionEngine &EE, ElemKind ETy,
+                                        float allowedError) {
+  ShapeVector idims = {2, 19};
+  ShapeVector odims = {2, 19};
+
+  Tensor pooledEmbeddingsTensorReal(ETy, idims);
+  Tensor listOffsetDimTensorReal(ElemKind::Int64ITy, {6});
+  Tensor listPermuteTensorReal(ElemKind::Int64ITy, {5});
+  Tensor dummyInvOffsetDimListTensorReal(ElemKind::Int64ITy, {1});
+  Tensor dummyInvPermuteListTensorReal(ElemKind::Int64ITy, {1});
+
+  pooledEmbeddingsTensorReal.getHandle<ElemTy>() = {
+      0.4705, 0.0634, 0.8867, 0.3685, 0.0328, 0.1191, 0.1907, 0.9518,
+      0.3688, 0.5838, 0.0315, 0.3067, 0.0160, 0.3304, 0.2706, 0.4694,
+      0.0182, 0.9961, 0.5213, 0.4605, 0.6342, 0.5052, 0.9236, 0.2747,
+      0.3745, 0.9434, 0.5810, 0.5646, 0.5182, 0.9379, 0.0866, 0.0854,
+      0.1088, 0.4771, 0.0636, 0.5778, 0.5571, 0.3586};
+  listOffsetDimTensorReal.getHandle<int64_t>() = {0, 1, 3, 7, 15, 19};
+  listPermuteTensorReal.getHandle<int64_t>() = {4, 0, 1, 3, 2};
+  dummyInvOffsetDimListTensorReal.getHandle<int64_t>() = {1};
+  dummyInvPermuteListTensorReal.getHandle<int64_t>() = {1};
+
+  auto embeddings = mod.createPlaceholder(ETy, idims, "embeddings", false);
+  auto offsetDimList =
+      mod.createPlaceholder(ElemKind::Int64ITy, {6}, "offsetDims", false);
+  auto permute =
+      mod.createPlaceholder(ElemKind::Int64ITy, {5}, "permute", false);
+  auto dummyInvOffsetDimList =
+      mod.createPlaceholder(ElemKind::Int64ITy, {1}, "invOffsetDims", false);
+  auto dummyInvPermuteList =
+      mod.createPlaceholder(ElemKind::Int64ITy, {1}, "invPermute", false);
+
+  bindings.insert(embeddings, std::move(pooledEmbeddingsTensorReal));
+  bindings.insert(offsetDimList, std::move(listOffsetDimTensorReal));
+  bindings.insert(permute, std::move(listPermuteTensorReal));
+  bindings.insert(dummyInvOffsetDimList,
+                  std::move(dummyInvOffsetDimListTensorReal));
+  bindings.insert(dummyInvPermuteList,
+                  std::move(dummyInvPermuteListTensorReal));
+
+  auto *R = F->createPermutePooledEmbeddingsNode(
+      "permutePooledEmbeddings", embeddings, offsetDimList, permute,
+      dummyInvOffsetDimList, dummyInvPermuteList);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(ETy, odims);
+  expected.getHandle<ElemTy>() = {
+      0.4694, 0.0182, 0.9961, 0.5213, 0.4705, 0.0634, 0.8867, 0.9518,
+      0.3688, 0.5838, 0.0315, 0.3067, 0.0160, 0.3304, 0.2706, 0.3685,
+      0.0328, 0.1191, 0.1907, 0.0636, 0.5778, 0.5571, 0.3586, 0.4605,
+      0.6342, 0.5052, 0.5810, 0.5646, 0.5182, 0.9379, 0.0866, 0.0854,
+      0.1088, 0.4771, 0.9236, 0.2747, 0.3745, 0.9434,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test that PermutePooledEmbeddings is correctly supported in FloatTy
+TEST_P(OperatorTest, PermutePooledEmbeddings_Float) {
+  CHECK_IF_ENABLED();
+  testPermutePooledEmbeddings<float>(bindings_, mod_, F_, EE_,
+                                     ElemKind::FloatTy, 0.001);
+}
+
+/// Test that PermutePooledEmbeddings is correctly supported in Float16Ty
+TEST_P(OperatorTest, PermutePooledEmbeddings_Float16) {
+  CHECK_IF_ENABLED();
+  testPermutePooledEmbeddings<float16_t>(bindings_, mod_, F_, EE_,
+                                         ElemKind::Float16Ty, 0.001);
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);

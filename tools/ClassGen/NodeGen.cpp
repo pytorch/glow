@@ -1097,6 +1097,15 @@ int main(int argc, char **argv) {
           "Table based batched embeddingbags with quantization support and "
           "indice weights. Experimental only and subject to change.");
 
+  BB.newNode("PermutePooledEmbeddings")
+      .addInput("PooledEmbeddings")
+      .addInput("OffsetDimList")
+      .addInput("PermuteList")
+      .addInput("InvOffsetDimList")
+      .addInput("InvPermuteList")
+      .addResultFromCtorArg()
+      .setDocstring("Permute pooled embeddings");
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

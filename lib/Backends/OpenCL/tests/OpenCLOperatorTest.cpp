@@ -799,4 +799,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "IntNBitSplitEmbeddingBagsSingle_Int8_MeanPooling/0",
     "IntNBitSplitEmbeddingBagsSingle_Int4_SumPooling/0",
     "IntNBitSplitEmbeddingBagsSingle_Int4_MeanPooling/0",
+    "PermutePooledEmbeddings_Float/0",
+    "PermutePooledEmbeddings_Float16/0",
 };

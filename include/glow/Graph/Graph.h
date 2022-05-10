@@ -1903,6 +1903,12 @@ public:
       SplitEmbeddingPoolingMode poolingMode,
       SplitEmbeddingSparseType outputDtype, NodeValue indiceWeights);
 
+  /// Create an PermutePooledEmbeddingsNode
+  PermutePooledEmbeddingsNode *createPermutePooledEmbeddingsNode(
+      llvm::StringRef name, NodeValue pooledEmbeddings, NodeValue listOffsetDim,
+      NodeValue listPermute, NodeValue listInvOffsetDim,
+      NodeValue listInvPermute);
+
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernels defines the size of the height and width dimensions
   /// of the convolutional filters. \p stride defines the the number of steps
