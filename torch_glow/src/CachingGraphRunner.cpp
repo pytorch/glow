@@ -80,6 +80,11 @@ Error initializeCompilationContextFromGlowFlags(
   if (glow::flags::DumpCompilationLog) {
     cctx.compilationLogPrefix = "torch-glow";
   }
+  if (glow::flags::ConvertFusedScaleOffsetToFP32) {
+    precConfig.convert4BitFusedToFP32 = true;
+    precConfig.convert8BitFusedToFP32 = true;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp32 enabled";
+  }
 
   // glow_sparsenn_partitioning_add_sls_concats
   // (SparseNNPartitioningAddSLSConcats) enables addition of concats to create a
