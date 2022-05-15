@@ -17,7 +17,7 @@ import onnx
 import torch
 import torch.nn
 import torch.onnx
-from onnx import TensorProto, helper
+from onnx import helper, TensorProto
 
 
 # LSTM enums

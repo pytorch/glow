@@ -15,7 +15,7 @@
 import numpy as np
 import onnx
 import tensorflow as tf
-from onnx import TensorProto, helper
+from onnx import helper, TensorProto
 from tensorflow.python.ops import gen_audio_ops as audio_ops
 
 

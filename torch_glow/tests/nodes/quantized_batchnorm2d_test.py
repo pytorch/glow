@@ -17,7 +17,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 import torch.nn as nn
 from tests import utils
-from torch.ao.quantization import QConfig, observer
+from torch.ao.quantization import observer, QConfig
 
 
 my_qconfig = QConfig(

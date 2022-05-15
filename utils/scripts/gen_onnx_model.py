@@ -19,7 +19,7 @@
 
 import numpy as np
 import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper
+from onnx import AttributeProto, GraphProto, helper, TensorProto
 
 
 # The protobuf definition can be found here:

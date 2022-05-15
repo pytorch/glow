@@ -18,13 +18,13 @@ import torch
 import torch.nn as nn
 from tests import utils
 from torch.ao.quantization import (
-    DeQuantStub,
-    QConfig,
-    QuantStub,
     convert,
+    DeQuantStub,
     fuse_modules,
     observer,
     prepare,
+    QConfig,
+    QuantStub,
 )
 
 

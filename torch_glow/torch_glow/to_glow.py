@@ -2,7 +2,7 @@ import collections
 import copy
 from contextlib import contextmanager
 from enum import Enum
-from typing import List, Tuple, Any, Iterable, Mapping, Optional, Union
+from typing import Any, Iterable, List, Mapping, Optional, Tuple, Union
 
 import torch
 import torch_glow

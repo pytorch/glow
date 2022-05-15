@@ -16,7 +16,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import torch
 from tests import utils
-from tests import utils
 
 
 class TestZero(utils.TorchGlowTestCase):

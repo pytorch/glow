@@ -5,7 +5,6 @@ import torch
 import torch.jit
 import torch_glow
 from tests import utils
-from tests import utils
 
 
 # Use a model containing quantized::conv2d to verify preprocessed module is
