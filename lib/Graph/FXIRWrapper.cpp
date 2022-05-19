@@ -47,15 +47,25 @@ const std::string &FXIRWrapper::getInputNodeName(const FXNode &node,
 
   CHECK(node.isObject()) << ": Expected Node object, but found "
                          << node.typeName() << ": " << node;
-  CHECK(node.find("is_node") != node.items().end() && node["is_node"].asBool())
-      << "Expected is_node";
+  const bool isNode =
+      node.find("is_node") != node.items().end() && node["is_node"].asBool();
+  const bool isTV = node.find("is_tensor_view") != node.items().end() &&
+                    node["is_tensor_view"].asBool();
+  CHECK(isNode || isTV) << "Expected is_node or is_tensor_view";
+  CHECK(!isNode || !isTV) << "Expected one of is_node and is_tensor_view";
 
-  const auto &name = node["name"].getString();
-
-  // Check if this name was for a getattr. If so, return the underlying Constant
-  // name. Otherwise return the name unchanged.
-  auto it = getattrs_.find(name);
-  return it != getattrs_.end() ? it->second : name;
+  if (isNode) {
+    const auto &name = node["name"].getString();
+    // Check if this name was for a getattr. If so, return the underlying
+    // Constant name. Otherwise return the name unchanged.
+    auto it = getattrs_.find(name);
+    return it != getattrs_.end() ? it->second : name;
+    return name;
+  } else {
+    const auto &node_name(node["alloc"]);
+    const auto &name = node_name.getString();
+    return name;
+  }
 }
 
 const void *FXIRWrapper::getConstant(llvm::StringRef name) {
@@ -82,15 +92,23 @@ const FXNode &FXIRWrapper::getFXNodeByName(llvm::StringRef nodeName) const {
 
 const FXNode &
 FXIRWrapper::getDestinationBufferForNode(const FXNode &node) const {
-
-  CHECK(node.find("users") != node.items().end())
-      << "users field doesn't exist in node " << node;
-  CHECK_EQ(node["users"].size(), 1);
-  auto users = node["users"].at(0);
-  auto user_name = users["name"].getString();
-  auto &dest_node = getFXNodeByName(user_name);
-  auto &dest = (getNodeOpCode(dest_node) == "output") ? node : dest_node;
-  return dest;
+  const auto &kwargs = getNodeKwargs(node);
+  if (kwargs.find("out_memref") != kwargs.items().end()) {
+    auto out_memref = kwargs["out_memref"];
+    auto out_name = out_memref["alloc"].getString();
+    auto &dest_node = getFXNodeByName(out_name);
+    auto &dest = (getNodeOpCode(dest_node) == "output") ? node : dest_node;
+    return dest;
+  } else {
+    CHECK(node.find("users") != node.items().end())
+        << "users field doesn't exist in node " << node;
+    CHECK_EQ(node["users"].size(), 1);
+    auto users = node["users"].at(0);
+    auto user_name = users["name"].getString();
+    auto &dest_node = getFXNodeByName(user_name);
+    auto &dest = (getNodeOpCode(dest_node) == "output") ? node : dest_node;
+    return dest;
+  }
 }
 
 const Storage *FXIRWrapper::getStorageFromNodeName(llvm::StringRef name) const {
