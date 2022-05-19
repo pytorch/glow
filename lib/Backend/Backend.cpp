@@ -286,3 +286,8 @@ Backend::getIROptimizationPipeline() const {
   auto pipeline = createDefaultIRFunctionOptimizationPipeline();
   return pipeline;
 }
+
+bool Backend::runBackendSpecificTransforms(IRFunction *M) const {
+  (void *)M;
+  return false;
+}

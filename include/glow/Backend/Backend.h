@@ -195,6 +195,10 @@ public:
   virtual std::unique_ptr<IRFunctionPassPipeline>
   getIROptimizationPipeline() const;
 
+  /// Run IR transformas specific to the backend. \returns true if the backend
+  /// specific changes resulted in changes in the IR.
+  virtual bool runBackendSpecificTransforms(IRFunction *M) const;
+
   /// \returns true if the Backend supports partial, unpadded tensors for
   /// inputs that can have variable size (e.g., embedding indices).
   virtual bool supportsPartialTensors() const { return false; }
