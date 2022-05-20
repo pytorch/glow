@@ -95,7 +95,7 @@ public:
 
   /// Returns a refernce to the vector of instructions making up the fused
   /// instruction.
-  const std::vector<Instruction *> &getInstrs() { return instrs_; }
+  const std::vector<Instruction *> &getInstrs() const { return instrs_; }
 
   /// Dump out the Fused instruction with its operands to \p os stream.
   void dump(llvm::raw_ostream &os) const {
