@@ -288,6 +288,6 @@ Backend::getIROptimizationPipeline() const {
 }
 
 bool Backend::runBackendSpecificTransforms(IRFunction *M) const {
-  (void *)M;
+  (void)M;
   return false;
 }
