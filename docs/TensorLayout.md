@@ -3,7 +3,7 @@
 This document describes the design of the tensor Layout requirements in Glow.
 
 Certain operations (e.g. convolutions, gemms, etc) need to know the semantic
-layout of their tensors, i.e. the logical ordering ordering of their dimensions
+layout of their tensors, i.e. the logical ordering of their dimensions
 (e.g. `NHWC`). Some backends enforce additional backend-specific requirements
 on said operations (e.g. tensor alignment).
 
@@ -41,7 +41,7 @@ we have an alignment restriction of 64 on the 4th.
 
 Notes:
 
-1. For each dimension, the identifier can be either a single english alphabet letter,
+1. For each dimension, the identifier can be either a single English alphabet letter,
 either upper or lower case, or the star symbol.
 2. We assume that a single letter is enough for each dimension,
 it makes parsing easier and avoids adding delimiters in the serialized format,
@@ -56,7 +56,7 @@ Which includes the following virtual methods they can override:
 
 - `virtual std::string getDefaultNDLayout(unsigned dims) const`
 
-  - This helper function takes a `unsigned dims` and returns the (current) default n-D layout.
+  - This helper function takes an `unsigned dims` and returns the (current) default n-D layout.
 
 - `virtual std::string getNthInputLayoutRequirements(const Node *node, size_t n)`
 
@@ -78,7 +78,7 @@ Which includes the following virtual methods they can override:
   - This helper function returns an array of predefined layouts for all dimensions from `0-D` to Glow's max tensor layout dimension.
 
 - `bool isEnabled() const`
-   - Indicates whatever checking for layout requirements is enabled or not. default is off.
+   - Indicates whatever checking for layout requirements is enabled or not. Default is off.
 
 An example of why backends may want to override such methods can be seen in the `OpenCL` backend:
 Convolutions are more efficient in `NCHW` format, as such, we may lower a `ConvolutionNode`

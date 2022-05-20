@@ -1,7 +1,7 @@
 ## NodeSplitting
 
 NodeSplitting is a set of utility functions used to perform node splitting at graph level. Splitting
-nodes in multiple smaller nodes has the the following benefits:
+nodes in multiple smaller nodes has the following benefits:
 - Allows a higher degree of parallelization when computing a larger operator by means of splitting in
   multiple smaller chunks.
 - Creates subgraphs which locally have a smaller memory footprint than the initial graph thus making
