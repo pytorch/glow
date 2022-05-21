@@ -1609,6 +1609,7 @@ void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers) {
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   IRFPM.run(&M, cctx);
+  B.runBackendSpecificTransforms(&M);
 }
 
 namespace ir {
