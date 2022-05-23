@@ -321,7 +321,9 @@ void LLVMIRGen::performCodeGen() {
   // Emit all the code before the retrun instruction.
   builder_->SetInsertPoint(ret);
 
-  instrNumbering_.reset(new InstructionNumbering(*F_));
+  if (F_) {
+    instrNumbering_.reset(new InstructionNumbering(*F_));
+  }
   generateFunctionDebugInfo();
   loadBaseAddresses(*builder_);
   generateLLVMIRForModule(*builder_);
