@@ -6,7 +6,7 @@
 
 * ANN  
   Artificial Neural Network  
-  A computational framework based on a synthetic construction of a the
+  A computational framework based on a synthetic construction of the
   biological neural network in brains.
 
 * AOT  
