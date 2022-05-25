@@ -183,6 +183,11 @@ llvm::cl::opt<unsigned> replicationCountOpt(
     "replication_count", llvm::cl::desc("Set the network replication count"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> useGlowCustomOpsLoadingDeferredWeights(
+    "use_glow_custom_ops_load_deferred_weights",
+    llvm::cl::desc("Use Glow custom ops or not when loading deferred weights"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 /// Explicitly show gflags help/version info, depending on \p foundHelpFlag and
 /// \p foundVersionFlag. llvm shows its own help/version info when it parses.
 void gflagsShowHelpVersion(bool foundHelpFlag, bool foundVersionFlag) {
@@ -344,7 +349,8 @@ public:
     }
     currentTensor_.reset(new ::glow::Tensor());
     RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get(),
-                                     /*useGlowCustomOps*/ false, largeBuffer_));
+                                     useGlowCustomOpsLoadingDeferredWeights,
+                                     largeBuffer_));
     CHECK(currentTensor_->getType().isEqual(ty))
         << "Mismatched tensor type: " << currentTensor_->getType().toString()
         << " vs " << ty.toString();
