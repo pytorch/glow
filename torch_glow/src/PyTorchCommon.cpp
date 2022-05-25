@@ -128,6 +128,9 @@ DEFINE_int32(SparseNNPartitioningSchemeNumCoresSLS, 1,
 DEFINE_int32(SparseNNPartitioningSchemeNumCoresOther, 1,
              "See PyTorchLoaderSettings");
 
+DEFINE_bool(disableInt64ConstantToInt32Convert, false,
+            "See PyTorchLoaderSettings");
+
 namespace glow {
 namespace {
 
@@ -407,6 +410,7 @@ void PyTorchLoaderSettings::initSettings() {
   SparseNNPartitioningSchemeNumCoresOther =
       FLAGS_SparseNNPartitioningSchemeNumCoresOther;
   debugLayers = FLAGS_debugLayers;
+  disableInt64ConstantToInt32Convert = FLAGS_disableInt64ConstantToInt32Convert;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -483,6 +487,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(enableDRT, s);
   INSERT_BOOL_TO_STREAM(convert8BitFusedToFP32, s);
   INSERT_BOOL_TO_STREAM(convert4BitFusedToFP32, s);
+  INSERT_BOOL_TO_STREAM(disableInt64ConstantToInt32Convert, s);
 
   if (opBlocklist.size() > 0) {
     s << "opBlocklist: [";

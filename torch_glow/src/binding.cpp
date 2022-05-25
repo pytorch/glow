@@ -510,6 +510,17 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().enableDeviceTracing = false;
   });
 
+  /// Enable int64 constant to int32 conversion.
+  m.def("enable_int64_constant_to_int32_convert", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableInt64ConstantToInt32Convert =
+        false;
+  });
+  /// Disable int64 constant to int32 conversion.
+  m.def("disable_int64_constant_to_int32_convert", []() {
+    getGlobalPyTorchLoaderSettingsMutable().disableInt64ConstantToInt32Convert =
+        true;
+  });
+
   /// Checks whether the node is supported by Glow.
   m.def("is_node_supported", glow::PyTorchModelLoader::isNodeSupported);
 

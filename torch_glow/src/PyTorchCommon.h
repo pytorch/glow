@@ -285,6 +285,9 @@ public:
 
   // Enable conversion of fp16 scale and bias of embedding tables to fp32.
   bool convert4BitFusedToFP32 = false;
+
+  // Disable conversion of int64 constant to int32 when enabled.
+  bool disableInt64ConstantToInt32Convert = false;
 };
 
 struct ModelCompilationConfigOverride {

@@ -8113,7 +8113,8 @@ PyTorchModelLoader::getGenerictList(const torch::jit::IValue &iVal) {
               ->createConstant("GenericList_created_constant",
                                std::move(glowTensor))
               ->getOutput();
-      if (glowConstantNodeValue.getElementType() == ElemKind::Int64ITy) {
+      if (!settings_.disableInt64ConstantToInt32Convert &&
+          glowConstantNodeValue.getElementType() == ElemKind::Int64ITy) {
         glowConstantNodeValue =
             convertInt64ConstantToInt32(glowConstantNodeValue, F_);
       }
@@ -8210,7 +8211,8 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     at::ScalarType correctType =
         elemKindToScalarType(glowConstant->getElementType());
     NodeValue out = glowConstant->getOutput();
-    if (glowConstant->getElementType() == ElemKind::Int64ITy) {
+    if (!settings_.disableInt64ConstantToInt32Convert &&
+        glowConstant->getElementType() == ElemKind::Int64ITy) {
       out = convertInt64ConstantToInt32(out, F_);
       correctType = at::kLong;
     }
