@@ -145,6 +145,14 @@ template <class T> std::vector<T> getConvKernels(const folly::dynamic &node) {
 }
 
 template <class T>
+std::vector<T> getConvKernelsFromWeightNode(const folly::dynamic &node) {
+  const auto weightShape = getNodeShape<glow::dim_t>(node);
+  CHECK_GE(weightShape.size(), 2) << "Expected weight at least 2D";
+  return std::vector<T>(weightShape[weightShape.size() - 2],
+                        weightShape[weightShape.size() - 1]);
+}
+
+template <class T>
 std::vector<T> getTransposeShuffle(const folly::dynamic &node) {
   const auto &inputs = getNodeKwargs(node);
   CHECK(inputs.find("permutation") != inputs.items().end())

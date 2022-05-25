@@ -91,9 +91,11 @@ public:
 
   /// \returns the name of input \p node. Fatals if \p node is not
   /// specified as is_node. If \p optional then \returns an empty string if \p
-  /// node is null.
-  const std::string &getInputNodeName(const folly::dynamic &node,
-                                      bool optional = false) const;
+  /// node is null. If \p getUnderlyingGetattrWeightName then the underlying
+  /// name of the weight will be returned, else the node's name itself.
+  const std::string &
+  getInputNodeName(const folly::dynamic &node, bool optional = false,
+                   bool getUnderlyingGetattrWeightName = true) const;
 
   /// \returns the underlying name of a Constant given provided \p name. If \p
   /// name is already the name of a Constant it is returned, else looks for
@@ -124,6 +126,9 @@ public:
 
   /// \returns the name of the node.
   const FXNode &getFXNodeByName(llvm::StringRef nodeName) const;
+
+  /// Given \p inputKwarg, \returns corresponding source FX node.
+  const FXNode &getFXNodeFromKwarg(const folly::dynamic &inputKwarg) const;
 
   const llvm::StringMap<const Storage *> &getMapNodeNameToStorage() const {
     return mapNodeNameToStorage_;
