@@ -37,8 +37,9 @@ const char *FXIRWrapper::getConstantName(llvm::StringRef name) const {
   return it != getattrs_.end() ? it->second.c_str() : nullptr;
 }
 
-const std::string &FXIRWrapper::getInputNodeName(const FXNode &node,
-                                                 bool optional) const {
+const std::string &
+FXIRWrapper::getInputNodeName(const FXNode &node, bool optional,
+                              bool getUnderlyingGetattrWeightName) const {
   if (node.isNull()) {
     CHECK(optional) << "Non-optional node must be non-null";
     static const std::string empty;
@@ -59,8 +60,8 @@ const std::string &FXIRWrapper::getInputNodeName(const FXNode &node,
     // Check if this name was for a getattr. If so, return the underlying
     // Constant name. Otherwise return the name unchanged.
     auto it = getattrs_.find(name);
-    return it != getattrs_.end() ? it->second : name;
-    return name;
+    return it != getattrs_.end() && getUnderlyingGetattrWeightName ? it->second
+                                                                   : name;
   } else {
     const auto &node_name(node["alloc"]);
     const auto &name = node_name.getString();
@@ -86,8 +87,16 @@ bool FXIRWrapper::constantExists(llvm::StringRef name) const {
 
 const FXNode &FXIRWrapper::getFXNodeByName(llvm::StringRef nodeName) const {
   auto it = namedNodes_.find(nodeName);
-  CHECK(it != namedNodes_.end()) << " Node with name doesn't exist";
+  CHECK(it != namedNodes_.end())
+      << " Node with name doesn't exist: " << nodeName.str();
   return it->second;
+}
+
+const FXNode &
+FXIRWrapper::getFXNodeFromKwarg(const folly::dynamic &inputKwarg) const {
+  return getFXNodeByName(
+      getInputNodeName(inputKwarg, /* optional */ false,
+                       /* getUnderlyingGetattrWeightName */ false));
 }
 
 const FXNode &
