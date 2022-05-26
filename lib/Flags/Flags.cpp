@@ -100,6 +100,8 @@ int32_t DAGOptimizerNumParallelChunks = 1;
 std::string DAGOptimizerPlacementTaggingAlgorithm = "None";
 std::string DAGOptimizerParallelizationTaggingAlgorithm = "None";
 
+bool DisableInt64ConstantToInt32Convert = false;
+
 } // namespace flags
 } // namespace glow
 
@@ -820,6 +822,14 @@ DEFINE_string(glow_backend_specific_opts, glow::flags::BackendSpecificOpts,
 DEFINE_validator(glow_backend_specific_opts,
                  [](const char *, const std::string &val) {
                    glow::flags::BackendSpecificOpts = val;
+                   return true;
+                 });
+DEFINE_bool(glow_disable_int64_constant_to_int32_convert,
+            glow::flags::DisableInt64ConstantToInt32Convert,
+            "Disable int64 constant to int32 conversion");
+DEFINE_validator(glow_disable_int64_constant_to_int32_convert,
+                 [](const char *, bool val) {
+                   glow::flags::DisableInt64ConstantToInt32Convert = val;
                    return true;
                  });
 

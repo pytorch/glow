@@ -89,6 +89,9 @@ extern int32_t DAGOptimizerNumParallelChunks;
 extern std::string DAGOptimizerPlacementTaggingAlgorithm;
 extern std::string DAGOptimizerParallelizationTaggingAlgorithm;
 
+// Disable conversion of int64 constant to int32 when set to true.
+extern bool DisableInt64ConstantToInt32Convert;
+
 /// Helper for processing opts in \p optsStr into \p opts. \returns if there is
 /// any error encountered when processing \p optsStr.
 bool processBackendSpecificOpts(std::map<std::string, std::string> &optsMap,
