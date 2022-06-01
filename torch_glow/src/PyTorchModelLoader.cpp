@@ -3636,10 +3636,8 @@ Error PyTorchModelLoader::loadFloorDiv(const torch::jit::Node *ptNode) {
     return MAKE_ERR("Either lhs or rhs of floorDiv node must be a tensor");
   }
 
-  // Current Pytorch FloorDiv is actually TruncDiv
-  // github.com/pytorch/pytorch/issues/43874
   auto res = F_.createFloorDivWithBroadcast(
-      "floor_divide", /* axis */ -1, lhsInput, rhsInput, /* truncate */ true);
+      "floor_divide", /* axis */ -1, lhsInput, rhsInput, /* truncate */ false);
   RETURN_IF_ERR(addValueMapping(outputs[0], res));
   RETURN_IF_ERR(setCorrectTypeMapping(outputs[0], correctType));
   return Error::success();
