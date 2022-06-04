@@ -326,7 +326,7 @@ class Backend;
 struct CompilationContext;
 
 /// Represents the compute graph.
-class Function final : public IRContainer {
+class Function : public IRContainer {
   /// A list of nodes that the Function owns.
   NodesList nodes_;
 
@@ -353,7 +353,7 @@ public:
     logCtx_->pushEvent(parent->getModuleLogContext()->getClonedScope());
   }
 
-  ~Function();
+  ~Function() override;
 
   IRKind getIRKind() const override { return IRKind::GlowGraphIRKind; };
 
