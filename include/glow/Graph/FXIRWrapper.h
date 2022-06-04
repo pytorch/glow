@@ -31,13 +31,10 @@ using FXWeight = folly::dynamic;
 
 /// A thin wrapper around FX IR to provides common APIs. This is not mean to be
 /// yet another IR, e.g., Glow high level graph IR.
-class FXIRWrapper final : public IRContainer {
+class FXIRWrapper final : public Function {
   /// Mapping from constant name to a void pointer points to where the constant
   /// is actually stored.
   const llvm::StringMap<const void *> &constants_;
-
-  /// A reference to the owner of the function.
-  Module *parent_;
 
   /// Mapping from getattrs to the underlying name of the constants they alias.
   llvm::StringMap<const std::string> getattrs_;
@@ -52,7 +49,7 @@ public:
   FXIRWrapper(const FXModule &FXIR, const std::string &submod,
               const llvm::StringMap<const void *> &constants,
               Module *glowModule, llvm::StringRef name = {})
-      : IRContainer(name), constants_(constants), parent_(glowModule) {
+      : Function(glowModule, name), constants_(constants) {
     fx_mod_ = submod == "" ? &FXIR : &(FXIR["modules"][submod]);
     // Create mapping from getattrs to the underlying name of the constants they
     // alias.
@@ -70,7 +67,7 @@ public:
     }
   }
 
-  ~FXIRWrapper() = default;
+  ~FXIRWrapper() override = default;
 
   /// A map to store (key) node name to  (value) placeholder/constant.
   llvm::StringMap<const Storage *> mapNodeNameToStorage_ = {};
@@ -116,10 +113,6 @@ public:
 
   /// \returns the nodes of the graph.
   const FXNodeList &getNodes() const;
-
-  /// \returns parent module that owns this graph.
-  Module *getParent() override { return parent_; }
-  const Module *getParent() const override { return parent_; }
 
   /// \returns fx module.
   const FXModule &getFXModule() const { return *fx_mod_; }
