@@ -782,24 +782,40 @@ llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
                                       llvm::Function *callee,
                                       llvm::ArrayRef<llvm::Value *> args,
                                       bool checked) {
+  llvm::CallInst *result = builder.CreateCall(callee, args);
 #ifndef NDEBUG
   llvm::FunctionType *FTy = callee->getFunctionType();
-  assert((args.size() == FTy->getNumParams() ||
-          (FTy->isVarArg() && args.size() > FTy->getNumParams())) &&
-         "Calling a function with bad signature: wrong number of arguments.");
+  if (args.size() != FTy->getNumParams() &&
+      !(FTy->isVarArg() && args.size() > FTy->getNumParams())) {
+    result->print(llvm::errs());
+    llvm::errs() << "\n";
+    CHECK_LT(FTy->getNumParams(), args.size())
+        << "Calling a function with bad signature: wrong number of arguments.";
+  }
 
   for (unsigned i = 0; i != args.size(); ++i) {
-    assert((i >= FTy->getNumParams() ||
-            FTy->getParamType(i) == args[i]->getType()) &&
-           "Calling a function with a bad signature: argument type mismatch.");
+    if (i >= FTy->getNumParams()) {
+      continue;
+    }
+    if (FTy->getParamType(i) != args[i]->getType()) {
+      result->print(llvm::errs());
+      llvm::errs() << "\n";
+      llvm::errs() << "Expected type: ";
+      FTy->getParamType(i)->print(llvm::errs());
+      llvm::errs() << "at index " << i << "\n";
+      llvm::errs() << "Provided type: ";
+      args[i]->print(llvm::errs());
+      llvm::errs() << "at index " << i << "\n";
+      CHECK_EQ(FTy->getParamType(i), args[i]->getType())
+          << "Calling a function with a bad signature: argument type mismatch.";
+    }
   }
 #endif
   if (!checked || !callee->getReturnType()->isIntegerTy()) {
-    return builder.CreateCall(callee, args);
+    return result;
   }
   // Check if callee returned an error, i.e. non-zero result.
   // Emit a return with this error code in this case.
-  auto *result = builder.CreateCall(callee, args);
   auto *zero = builder.getIntN(result->getType()->getIntegerBitWidth(), 0);
   auto *cond = builder.CreateICmpNE(result, zero);
   auto insertionPoint = builder.GetInsertPoint();
