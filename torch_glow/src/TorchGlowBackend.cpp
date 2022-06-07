@@ -23,7 +23,7 @@
 #include "glow/Backend/BlockStreamBase.h"
 #include "glow/Runtime/ErrorReporter.h"
 
-#include <ATen/native/quantized/packed_params.h>
+#include <ATen/native/quantized/PackedParams.h>
 #include <torch/csrc/jit/backends/backend.h>
 #include <torch/csrc/jit/backends/backend_preprocess.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
