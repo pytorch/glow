@@ -952,7 +952,7 @@ int run() {
           mergedTraceContext.dump(path);
         }
       } else {
-        LOG(INFO) << "Trace path=" << path.c_str();
+        LOG(INFO) << "Trace path=" << glowDumpTraceFile.c_str();
         mergedTraceContext.dump(glowDumpTraceFile);
       }
     }
