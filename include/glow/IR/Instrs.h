@@ -23,6 +23,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
+#include <algorithm>
 
 namespace glow {
 
@@ -114,6 +115,12 @@ public:
   void dump() const { dump(llvm::outs()); }
 
   bool verify() const { return true; }
+
+  /// \p Returns true if \p instr is a member of this fusion group instr
+  bool contains(Instruction *inst) const {
+    auto result = std::find(instrs_.begin(), instrs_.end(), inst);
+    return (result != std::end(instrs_));
+  }
 
 private:
   /// Instructions that make up this fused instruction.
