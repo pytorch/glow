@@ -742,6 +742,7 @@ void FXNNPIImporter::updateDescQuantFromFX(
     break;
   case DTYPE::INT32:
   case DTYPE::INT64:
+  case DTYPE::UINT8:
     LOG_ERROR_IF_NOT((scaleTensor.empty() && offsetTensor.empty()))
         << "Scales and offsets provided for Int64 or Int32";
     desc.quantParams.precision = NNPI_PRECISION_INT32;
