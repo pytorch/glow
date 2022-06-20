@@ -251,7 +251,9 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
 Error HostManager::addNetwork(std::unique_ptr<Module> module,
                               CompilationContext &cctx) {
 #ifdef FACEBOOK_INTERNAL
-  LOG(INFO) << "Adding Glow network built with revision hash: " << revisionHash;
+  LOG(WARNING) << "Adding Glow network built with revision hash: "
+               << revisionHash;
+
 #endif /* FACEBOOK_INTERNAL */
   VLOG(1) << "addNetwork";
   ScopeGuard debugDumpDAGGuard([&]() {
