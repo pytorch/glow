@@ -1455,7 +1455,12 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
       output = F_->createRescaleQuantized(opInfo.name, input, outTy);
     }
   } else if (opCode == tflite::BuiltinOperator_DEQUANTIZE) {
-    output = F_->createDequantize(opInfo.name, input, outTy);
+    // If the input type is Float16 then we create a Cast operation.
+    if (input.getElementType() == ElemKind::Float16Ty) {
+      output = F_->createConvertTo(opInfo.name, input, outTy);
+    } else {
+      output = F_->createDequantize(opInfo.name, input, outTy);
+    }
   } else {
     return MAKE_ERR(opErrMsg(opInfo, "Unsupported unary arithmetic operator!"));
   }
