@@ -58,6 +58,15 @@ llvm::cl::opt<bool> tfliteFloatOutputsOpt(
     llvm::cl::init(false), llvm::cl::Optional,
     llvm::cl::cat(tfliteModelLoaderCat));
 
+llvm::cl::opt<bool> tfliteRenameTensorsOpt(
+    "tflite-rename-tensors",
+    llvm::cl::desc(
+        "TensorFlowLite loader option to rename the tensors with unique names "
+        "with the format tensor<ID>. This is useful when the graph tensors "
+        "have long names and are hard to track visually."),
+    llvm::cl::init(false), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
 llvm::cl::opt<bool> tfliteFloatSoftmaxOpt(
     "tflite-float-softmax",
     llvm::cl::desc("TensorFlowLite loader option to replace a quantized Softmax"
@@ -257,7 +266,11 @@ TFLiteModelLoader::getTensorByIndex(size_t index) {
 }
 
 std::string TFLiteModelLoader::getTensorName(const tflite::Tensor *tensor) {
-  return tensor->name()->str();
+  if (tfliteRenameTensorsOpt) {
+    return std::string("tensor") + std::to_string((size_t)(tensor));
+  } else {
+    return tensor->name()->str();
+  }
 }
 
 Expected<std::vector<dim_t>>
