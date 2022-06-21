@@ -267,7 +267,13 @@ TFLiteModelLoader::getTensorByIndex(size_t index) {
 
 std::string TFLiteModelLoader::getTensorName(const tflite::Tensor *tensor) {
   if (tfliteRenameTensorsOpt) {
-    return std::string("tensor") + std::to_string((size_t)(tensor));
+    auto *tensors = graph_->tensors();
+    auto tensorIt = std::find(tensors->begin(), tensors->end(), tensor);
+    assert(tensorIt != tensors->end() && "Tensor not found!");
+    auto tensorIdx = std::distance(tensors->begin(), tensorIt);
+    assert((0 <= tensorIdx) && (tensorIdx < tensors->size()) &&
+           "Invalid tensor index!");
+    return std::string("tensor") + std::to_string((size_t)(tensorIdx));
   } else {
     return tensor->name()->str();
   }
