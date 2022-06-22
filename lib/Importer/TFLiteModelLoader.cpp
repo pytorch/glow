@@ -58,6 +58,15 @@ llvm::cl::opt<bool> tfliteFloatOutputsOpt(
     llvm::cl::init(false), llvm::cl::Optional,
     llvm::cl::cat(tfliteModelLoaderCat));
 
+llvm::cl::opt<bool> tfliteRenameTensorsOpt(
+    "tflite-rename-tensors",
+    llvm::cl::desc(
+        "TensorFlowLite loader option to rename the tensors with unique names "
+        "with the format tensor<ID>. This is useful when the graph tensors "
+        "have long names and are hard to track visually."),
+    llvm::cl::init(false), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
 llvm::cl::opt<bool> tfliteFloatSoftmaxOpt(
     "tflite-float-softmax",
     llvm::cl::desc("TensorFlowLite loader option to replace a quantized Softmax"
@@ -257,7 +266,17 @@ TFLiteModelLoader::getTensorByIndex(size_t index) {
 }
 
 std::string TFLiteModelLoader::getTensorName(const tflite::Tensor *tensor) {
-  return tensor->name()->str();
+  if (tfliteRenameTensorsOpt) {
+    auto *tensors = graph_->tensors();
+    auto tensorIt = std::find(tensors->begin(), tensors->end(), tensor);
+    assert(tensorIt != tensors->end() && "Tensor not found!");
+    auto tensorIdx = std::distance(tensors->begin(), tensorIt);
+    assert((0 <= tensorIdx) && (tensorIdx < tensors->size()) &&
+           "Invalid tensor index!");
+    return std::string("tensor") + std::to_string((size_t)(tensorIdx));
+  } else {
+    return tensor->name()->str();
+  }
 }
 
 Expected<std::vector<dim_t>>
@@ -1455,7 +1474,12 @@ Error TFLiteModelLoader::loadUnaryArithmetic(const tflite::Operator *op,
       output = F_->createRescaleQuantized(opInfo.name, input, outTy);
     }
   } else if (opCode == tflite::BuiltinOperator_DEQUANTIZE) {
-    output = F_->createDequantize(opInfo.name, input, outTy);
+    // If the input type is Float16 then we create a Cast operation.
+    if (input.getElementType() == ElemKind::Float16Ty) {
+      output = F_->createConvertTo(opInfo.name, input, outTy);
+    } else {
+      output = F_->createDequantize(opInfo.name, input, outTy);
+    }
   } else {
     return MAKE_ERR(opErrMsg(opInfo, "Unsupported unary arithmetic operator!"));
   }
