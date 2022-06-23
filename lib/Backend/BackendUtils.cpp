@@ -14,11 +14,22 @@
  * limitations under the License.
  */
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Base/Traits.h"
+#include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/FXIRWrapper.h"
+#include "glow/IR/IR.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Support/Debug.h"
+#include "glow/Support/Memory.h"
+
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+
 #include <glog/logging.h>
+#include <memory>
+#include <string>
+#include <unordered_map>
 
 #define DEBUG_TYPE "backend-utils"
 
@@ -48,6 +59,7 @@ glow::runtime::RuntimeBundle::operator=(glow::runtime::RuntimeBundle &&rhs) {
   }
 
   std::swap(symbolTable_, rhs.symbolTable_);
+  std::swap(memRegionTable_, rhs.memRegionTable_);
   std::swap(constants_, rhs.constants_);
   std::swap(constantWeightVarsMemSize_, rhs.constantWeightVarsMemSize_);
   std::swap(mutableWeightVarsMemSize_, rhs.mutableWeightVarsMemSize_);
@@ -88,7 +100,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
 
   for (const auto &symbol : symbolTable_) {
     llvm::StringRef name = symbol.first;
-    const RuntimeSymbolInfo &info = symbol.second;
+    const auto &info = *symbol.second;
 
     Constant *c = M->getConstantByName(name);
     if (!c) {
@@ -121,7 +133,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const FXIRWrapper *F) {
 
   for (const auto &symbol : symbolTable_) {
     llvm::StringRef name = symbol.first;
-    const RuntimeSymbolInfo &info = symbol.second;
+    const auto &info = *symbol.second;
 
     // Only work with constants/weights here.
     auto category = info.symbolCategory;
@@ -150,7 +162,7 @@ size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
   DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
-  return it->second.offset;
+  return it->second->offset;
 }
 
 const runtime::RuntimeSymbolInfo &
@@ -158,7 +170,7 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
-  return it->second;
+  return *it->second;
 }
 
 namespace glow {
@@ -375,6 +387,14 @@ ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
   return ret;
 }
 
+/// Explicitly instantiate a function for specific argument types.
+template ContiguousPlaceholders
+getContiguousPlaceHolder(const std::vector<const Placeholder *> &,
+                         const IRFunction &);
+
+template ContiguousPlaceholders
+getContiguousPlaceHolder(const std::list<Placeholder *> &, const Function &);
+
 /// \returns true if \p dst is capable of handling a partial tensor as input
 /// from \p src.
 static bool allowsPartialInput(const Node *src, const Node *dst) {
@@ -453,23 +473,28 @@ bool usedInFunction(const Placeholder *V, const Function *F) {
 template <typename ConstantsTy>
 static void allocateConstantsImpl(const ConstantsTy &constants,
                                   MemoryAllocator &allocator,
-                                  glow::runtime::SymbolTableTy &symbolTable) {
+                                  glow::runtime::RuntimeBundle &runtimeBundle) {
+  auto &symbolTable = runtimeBundle.getSymbolTable();
   for (auto const *C : constants) {
     // Same constant may be used multiple times by different functions. But it
     // should be assigned an address only once.
-    if (symbolTable.count(std::string(C->getName()))) {
+    auto it = symbolTable.find(std::string(C->getName()));
+    CHECK(it != symbolTable.end())
+        << "Constant should be present in the symbol table";
+    auto &symbol = *it->second;
+    CHECK(symbol.symbolCategory == glow::runtime::SymbolCategory::Constant)
+        << "Expected constant";
+    if (symbol.size > 0) {
+      // Address assignment was perfomed already.
       continue;
     }
     auto size = C->getType()->getSizeInBytes();
     auto offset = allocator.allocate(size, C);
-    runtime::RuntimeSymbolInfo symbol;
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *C->getType();
     symbol.input = false;
     symbol.output = false;
-    symbol.symbolCategory = glow::runtime::SymbolCategory::Constant;
-    symbolTable.emplace(C->getName(), symbol);
     DEBUG_GLOW(LOG(INFO) << strFormat(
                    "Assigned address to constant %s: %zx (%zd bytes)\n",
                    C->getName().data(), symbol.offset, symbol.size));
@@ -477,35 +502,41 @@ static void allocateConstantsImpl(const ConstantsTy &constants,
 }
 
 void allocateConstants(const ConstList &constants, MemoryAllocator &allocator,
-                       glow::runtime::SymbolTableTy &symbolTable) {
-  allocateConstantsImpl(constants, allocator, symbolTable);
+                       glow::runtime::RuntimeBundle &runtimeBundle) {
+  allocateConstantsImpl(constants, allocator, runtimeBundle);
 }
 
 void allocateConstants(const std::vector<const glow::Constant *> &constants,
                        MemoryAllocator &allocator,
-                       glow::runtime::SymbolTableTy &symbolTable) {
-  allocateConstantsImpl(constants, allocator, symbolTable);
+                       glow::runtime::RuntimeBundle &runtimeBundle) {
+  allocateConstantsImpl(constants, allocator, runtimeBundle);
 }
 
 /// Allocate space for the Placeholders in \p placeholders using \p allocator
 /// and store the resultant symbols in \p symbolTable.
 void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
                           MemoryAllocator &allocator,
-                          glow::runtime::SymbolTableTy &symbolTable) {
+                          glow::runtime::RuntimeBundle &runtimeBundle) {
+  auto &symbolTable = runtimeBundle.getSymbolTable();
   for (const auto &p : placeholders) {
     auto &V = p.addr;
-    assert(!symbolTable.count(std::string(V->getName())) &&
-           "Allocation already made!");
+    auto it = symbolTable.find(std::string(V->getName()));
+    CHECK(it != symbolTable.end())
+        << "Placeholder should be present in the symbol table";
+    auto &symbol = *it->second;
+    CHECK(symbol.symbolCategory == glow::runtime::SymbolCategory::Placeholder)
+        << "Expected placeholder";
+    if (symbol.size > 0) {
+      // Address assignment was perfomed already.
+      continue;
+    }
     auto size = V->getType()->getSizeInBytes();
     auto offset = allocator.allocate(size, V);
-    runtime::RuntimeSymbolInfo symbol;
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *V->getType();
     symbol.output = p.isOutput;
     symbol.input = p.isInput;
-    symbol.symbolCategory = glow::runtime::SymbolCategory::Placeholder;
-    symbolTable.emplace(std::string(V->getName()), symbol);
     DEBUG_GLOW(LOG(INFO) << strFormat(
                    "Assigned address to mutable weight %s: %zx (%zd bytes)\n",
                    V->getName().data(), symbol.offset, symbol.size));
@@ -516,8 +547,8 @@ void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
 /// the resultant symbols in \p symbolTable.
 void allocateActivations(const glow::IRFunction::InstListTy &instrs,
                          MemoryAllocator &allocator,
-                         glow::runtime::SymbolTableTy &symbolTable) {
-
+                         glow::runtime::RuntimeBundle &runtimeBundle) {
+  auto &symbolTable = runtimeBundle.getSymbolTable();
   // Gather allocation/deallocation sequence.
   std::list<Allocation> allocList;
   if (reuseActivationsMemory) {
@@ -577,16 +608,22 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
       auto numBytes = I.getSizeInBytes();
       size_t addr = activationsBaseAddr + activationsAllocator.getAddress(A);
-      assert(!symbolTable.count(std::string(A->getName())) &&
-             "Allocation already made!");
-      runtime::RuntimeSymbolInfo symbol;
+      auto it = symbolTable.find(std::string(A->getName()));
+      CHECK(it != symbolTable.end())
+          << "Activation should be present in the symbol table";
+      auto &symbol = *it->second;
+      CHECK(symbol.symbolCategory == glow::runtime::SymbolCategory::Activation)
+          << "Expected activation";
+      if (symbol.size > 0) {
+        // Address assignment was perfomed already.
+        continue;
+      }
+      CHECK(symbol.size == 0) << "Allocation already made!";
       symbol.offset = addr;
       symbol.size = numBytes;
       symbol.type = *A->getType();
       symbol.input = false;
       symbol.output = false;
-      symbol.symbolCategory = glow::runtime::SymbolCategory::Activation;
-      symbolTable.emplace(std::string(A->getName()), symbol);
       DEBUG_GLOW(LOG(INFO) << strFormat(
                      "Assigned address to activation %s: %zx (%zd bytes)\n",
                      A->getName().data(), symbol.offset, symbol.size));
@@ -596,30 +633,37 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
     if (auto *TV = dyn_cast<TensorViewInst>(&I)) {
       // Calculate and store the length of the offset into the base, using the
       // source of the tensorview.
-      assert(!symbolTable.count(std::string(TV->getName())) &&
-             "Allocation already made!");
+      auto it = symbolTable.find(std::string(TV->getName()));
+      CHECK(it != symbolTable.end())
+          << "TensorView should be present in the symbol table";
       auto *tvSource = getOrigin(TV);
-      assert(symbolTable.count(std::string(tvSource->getName())) &&
-             "Source allocation not found!");
-      runtime::RuntimeSymbolInfo symbol;
-      size_t originAddr = symbolTable[std::string(tvSource->getName())].offset;
+      auto srcIt = symbolTable.find(std::string(tvSource->getName()));
+      CHECK(srcIt != symbolTable.end()) << "Source allocation not found!";
+      auto &symbol = *it->second;
+      auto &srcSymbol = *srcIt->second;
+      size_t originAddr = srcSymbol.offset;
       size_t offset = calculateTensorViewOffset(TV);
-
+      if (symbol.size > 0) {
+        // Address assignment was perfomed already.
+        continue;
+      }
       symbol.offset = originAddr + offset;
       symbol.size = TV->getSizeInBytes();
       symbol.type = *TV->getType();
       symbol.input = false;
       symbol.output = false;
-      auto parentCategory = symbolTable.find(std::string(tvSource->getName()))
-                                ->second.symbolCategory;
+      auto parentCategory = srcSymbol.symbolCategory;
       if (parentCategory == glow::runtime::SymbolCategory::Placeholder) {
         symbol.symbolCategory =
             glow::runtime::SymbolCategory::PlaceholderTensorView;
+        symbol.memRegion = &runtimeBundle.getMemoryRegion(
+            runtime::MemoryRegions::MutableWeight);
       } else {
         symbol.symbolCategory =
             glow::runtime::SymbolCategory::ConstantTensorView;
+        symbol.memRegion = &runtimeBundle.getMemoryRegion(
+            runtime::MemoryRegions::ConstantWeight);
       }
-      symbolTable.emplace(std::string(TV->getName()), symbol);
       DEBUG_GLOW(LOG(INFO) << strFormat(
                      "Assigned address to activation %s: %zx (%zd bytes)\n",
                      TV->getName().data(), symbol.offset, symbol.size));
@@ -635,15 +679,60 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
 
 } // namespace glow
 
+void runtime::RuntimeBundle::allocMemory(
+    const IRContainer &F, MemoryAllocator &constantAllocator,
+    MemoryAllocator &placeholderAllocator,
+    MemoryAllocator &activationsAllocator) {
+  // Set allocators for the standard regions.
+  if (memRegionTable_.count(runtime::MemoryRegions::Activation)) {
+    memRegionTable_[runtime::MemoryRegions::Activation]->setMemoryAllocator(
+        &activationsAllocator);
+  }
+
+  if (memRegionTable_.count(runtime::MemoryRegions::ConstantWeight)) {
+    memRegionTable_[runtime::MemoryRegions::ConstantWeight]->setMemoryAllocator(
+        &constantAllocator);
+  }
+
+  if (memRegionTable_.count(runtime::MemoryRegions::MutableWeight)) {
+    memRegionTable_[runtime::MemoryRegions::MutableWeight]->setMemoryAllocator(
+        &placeholderAllocator);
+  }
+
+  allocateMemory(F, memRegionTable_, symbolTable_);
+
+  auto constantMaxSize =
+      getMemoryRegionSize(runtime::MemoryRegions::ConstantWeight);
+  auto placeholderMaxSize =
+      getMemoryRegionSize(runtime::MemoryRegions::MutableWeight);
+  auto activationsMaxSize =
+      getMemoryRegionSize(runtime::MemoryRegions::Activation);
+
+  constantWeightVarsMemSize_ = constantMaxSize;
+  mutableWeightVarsMemSize_ = placeholderMaxSize;
+  activationsMemSize_ = activationsMaxSize;
+
+  // If all allocators refer to the same underlying allocator, Constants,
+  // Placeholders and activations will be allocated contiguously.
+  bool isSameAllocator = (&constantAllocator == &placeholderAllocator &&
+                          &constantAllocator == &activationsAllocator);
+
+  if (isSameAllocator) {
+    DCHECK_EQ(constantAllocator.getMaxMemoryUsage(),
+              constantMaxSize + placeholderMaxSize + activationsMaxSize);
+  }
+}
+
 runtime::RuntimeBundle
 runtime::RuntimeBundle::create(const Function &F,
                                const std::vector<const IRFunction *> &funcs) {
-  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  RuntimeBundle runtimeBundle(0, 0, 0);
+  // SymbolTableTy symbolTable;
   MemoryAllocator allocator("allocator", 0);
   uint64_t constantsMaxMem = 0, placeholdersMaxMem = 0, activationsMaxMem = 0;
 
   // Allocate constants.
-  allocateConstants(F.getParent()->getConstants(), allocator, symbolTable);
+  allocateConstants(F.getParent()->getConstants(), allocator, runtimeBundle);
   constantsMaxMem = allocator.getMaxMemoryUsage();
 
   // Allocate placeholders. Placeholders should be allocated in a order of
@@ -656,41 +745,76 @@ runtime::RuntimeBundle::create(const Function &F,
 
   auto contiguousPlaceholders =
       getContiguousPlaceHolder(F.getParent()->getPlaceholders(), graphs);
-  allocatePlaceholders(contiguousPlaceholders, allocator, symbolTable);
+  allocatePlaceholders(contiguousPlaceholders, allocator, runtimeBundle);
   placeholdersMaxMem = allocator.getMaxMemoryUsage() - constantsMaxMem;
 
   // Allocate activations.
   for (const auto &f : funcs) {
-    allocateActivations(f->getInstrs(), allocator, symbolTable);
+    allocateActivations(f->getInstrs(), allocator, runtimeBundle);
   }
 
   activationsMaxMem =
       allocator.getMaxMemoryUsage() - constantsMaxMem - placeholdersMaxMem;
 
-  return runtime::RuntimeBundle(symbolTable, constantsMaxMem,
-                                placeholdersMaxMem, activationsMaxMem);
+  runtimeBundle.constantWeightVarsMemSize_ = constantsMaxMem;
+  runtimeBundle.mutableWeightVarsMemSize_ = placeholdersMaxMem;
+  runtimeBundle.activationsMemSize_ = activationsMaxMem;
+  return runtimeBundle;
 }
 
 runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
-  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  RuntimeBundle runtimeBundle(0, 0, 0);
+  MemoryAllocator constantAllocator("constants", 0);
+  MemoryAllocator placeholderAllocator("placeholders", 0);
+  MemoryAllocator activationsAllocator("activations", 0);
+  // Use default memory regions for backward compatibility reasons and to handle
+  // simple cases.
+  const auto memRegionDescriptions = getDefaultMemoryRegionDescriptions();
+  auto getValueForNode = [](const Storage *v) -> const Kinded * { return v; };
+  createMemoryRegionTableForConstantsAndPlaceholders(
+      F, *memRegionDescriptions, runtimeBundle.memRegionTable_,
+      runtimeBundle.symbolTable_, getValueForNode);
+  runtimeBundle.allocMemory(F, constantAllocator, placeholderAllocator,
+                            activationsAllocator);
+  return runtimeBundle;
+}
 
-  MemoryAllocator constants("constants", 0);
-  MemoryAllocator placeholders("placeholders", 0);
+void glow::allocateMemory(const IRContainer &F,
+                          runtime::MemoryRegionTableTy &memRegionTable,
+                          runtime::SymbolTableTy &symbolTable) {
+  // Check for each memory allocator if it is used by multiple regions.
+  std::unordered_map<const glow::MemoryAllocator *, size_t> allocatorToNumUses;
+  for (auto &pair : memRegionTable) {
+    auto &memRegion = *pair.second;
+    auto *allocator = memRegion.getMemoryAllocator();
+    if (!allocator) {
+      continue;
+    }
+    allocatorToNumUses[allocator]++;
+  }
+  // Allocate memory for each region.
+  for (auto &pair : memRegionTable) {
+    auto &memRegion = *pair.second;
+    auto *allocator = memRegion.getMemoryAllocator();
+    auto allocNumUses = allocator ? allocatorToNumUses[allocator] : 1;
+    bool isExclusiveMemoryAllocator = (allocNumUses == 1);
+    memRegion.allocate(isExclusiveMemoryAllocator);
+  }
+  DEBUG_GLOW(dumpMemoryRegionTable(llvm::dbgs(), memRegionTable));
+}
 
-  // Allocate constants.
-  allocateConstants(F.findConstants(), constants, symbolTable);
-
-  // Allocate placeholders.
-  // Placeholders should be allocated in a order of Input|InputOutput|Output.
-  auto contiguousPlaceholders =
-      getContiguousPlaceHolder(F.findPlaceholders(), F);
-
-  // Compute the offsets for Placeholders.
-  allocatePlaceholders(contiguousPlaceholders, placeholders, symbolTable);
-
-  return runtime::RuntimeBundle(symbolTable, constants.getMaxMemoryUsage(),
-                                placeholders.getMaxMemoryUsage(),
-                                /*activationsMaxSize*/ 0);
+runtime::RuntimeBundle runtime::RuntimeBundle::create(
+    const IRFunction &F,
+    const runtime::MemoryRegionDescriptions &memRegionDescriptions,
+    MemoryAllocator &constantAllocator, MemoryAllocator &placeholderAllocator,
+    MemoryAllocator &activationsAllocator) {
+  RuntimeBundle runtimeBundle(0, 0, 0);
+  createMemoryRegionTable(F, memRegionDescriptions,
+                          runtimeBundle.memRegionTable_,
+                          runtimeBundle.symbolTable_);
+  runtimeBundle.allocMemory(F, constantAllocator, placeholderAllocator,
+                            activationsAllocator);
+  return runtimeBundle;
 }
 
 runtime::RuntimeBundle
@@ -698,48 +822,102 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                                MemoryAllocator &constantAllocator,
                                MemoryAllocator &placeholderAllocator,
                                MemoryAllocator &activationsAllocator) {
-
-  // If all allocators refer to the same underlying allocator, Constants,
-  // Placeholders and activations will be allocated contiguously. The maximum
-  // memory usage reported by the allocator for each kind of storage will
-  // include the memory usage of all previously allocated types of storage and
-  // needs to be adjusted accordingly.
-  bool contiguous = (&constantAllocator == &placeholderAllocator &&
-                     &constantAllocator == &activationsAllocator);
-  // Handle Constants, Placeholders, and Activations, in that order.
-  // Symbol table mapping symbol name to offset for runtime.
-  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
-
-  allocateConstants(F.findConstants(), constantAllocator, symbolTable);
-  auto constantMaxSize = constantAllocator.getMaxMemoryUsage();
-
-  // Placeholders should be allocated in a order of Input|InputOutput|Output.
-  auto contiguousPlaceholders =
-      getContiguousPlaceHolder(F.findPlaceholders(), F);
-  // Compute the offsets for Placeholders.
-  allocatePlaceholders(contiguousPlaceholders, placeholderAllocator,
-                       symbolTable);
-  auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();
-  if (contiguous) {
-    placeholderMaxSize -= constantMaxSize;
-  }
-
-  // Compute the offsets for Activations.
-  allocateActivations(F.getInstrs(), activationsAllocator, symbolTable);
-
-  auto activationsMaxSize = activationsAllocator.getMaxMemoryUsage();
-  if (contiguous) {
-    activationsMaxSize -= constantMaxSize + placeholderMaxSize;
-    DCHECK_EQ(constantAllocator.getMaxMemoryUsage(),
-              constantMaxSize + placeholderMaxSize + activationsMaxSize);
-  }
-
-  return runtime::RuntimeBundle(symbolTable, constantMaxSize,
-                                placeholderMaxSize, activationsMaxSize);
+  // Use default memory regions for backward compatibility reasons and to handle
+  // simple cases.
+  const auto memRegionDescriptions = getDefaultMemoryRegionDescriptions();
+  return create(F, *memRegionDescriptions, constantAllocator,
+                placeholderAllocator, activationsAllocator);
 }
 
 runtime::RuntimeBundle
 runtime::RuntimeBundle::create(const IRFunction &F,
                                MemoryAllocator &allocator) {
   return create(F, allocator, allocator, allocator);
+}
+
+void runtime::RuntimeSymbolInfo::dump(llvm::raw_ostream &out) const {
+  out << "RuntimeSymbolInfo {\n";
+  out << "name: " << name << "\n";
+  out << "size: " << size << "\n";
+  out << "offset: " << offset << "\n";
+  out << "memory_region_id: " << getMemRegionId() << "\n";
+  out << "type: " << type << "\n";
+  out << "category: " << (uint64_t)symbolCategory << "\n";
+  out << "is_input: " << input << "\n";
+  out << "is_output: " << output << "\n";
+  out << "}\n";
+}
+
+void runtime::RuntimeSymbolInfo::dump() const { dump(llvm::outs()); }
+
+std::string runtime::RuntimeSymbolInfo::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
+void runtime::RuntimeBundle::dump(llvm::raw_ostream &out) const {
+  out << "RuntimeBundle {\n";
+  out << "Constant weights memory size: " << constantWeightVarsMemSize_ << "\n";
+  out << "Mutable weights memory size: " << mutableWeightVarsMemSize_ << "\n";
+  out << "Activations memory size: " << activationsMemSize_ << "\n";
+  out << "Constants address: " << (uint64_t)constants_ << "\n";
+  out << "IsValid: " << isValid_ << "\n";
+  out << "SymbolTable {\n";
+  for (auto &pair : symbolTable_) {
+    auto &name = pair.first;
+    auto &symbol = *pair.second;
+    out << name;
+    symbol.dump(out);
+  }
+  out << "}\n";
+  out << "}\n";
+}
+
+void runtime::RuntimeBundle::dump() const { dump(llvm::outs()); }
+
+std::string runtime::RuntimeBundle::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
+runtime::MemoryRegion &
+runtime::RuntimeBundle::getMemoryRegion(MemoryRegionId regionId) {
+  CHECK(memRegionTable_.find(regionId) != memRegionTable_.end())
+      << "Unknown memory region with id: " << regionId;
+  return *memRegionTable_[regionId];
+}
+
+const runtime::MemoryRegion &
+runtime::RuntimeBundle::getMemoryRegion(MemoryRegionId regionId) const {
+  CHECK(memRegionTable_.find(regionId) != memRegionTable_.end())
+      << "Unknown memory region with id: " << regionId;
+  return *memRegionTable_.at(regionId);
+}
+
+size_t runtime::RuntimeBundle::getMemoryRegionSize(MemoryRegionId regionId) {
+  return getMemoryRegion(regionId).getMemSize();
+}
+
+runtime::MemoryRegionId runtime::RuntimeSymbolInfo::getMemRegionId() const {
+  return memRegion->getId();
+}
+
+const std::string &runtime::RuntimeSymbolInfo::getSymbolKey() const {
+  return name;
+}
+
+void runtime::dumpMemoryRegionTable(llvm::raw_ostream &out,
+                                    const MemoryRegionTableTy &memRegionTable) {
+  out << "Memory Regions:\n";
+  for (auto &pair : memRegionTable) {
+    pair.second->dump(glow::dbgs());
+  };
+}
+
+void runtime::dumpMemoryRegionTable(const MemoryRegionTableTy &memRegionTable) {
+  dumpMemoryRegionTable(llvm::outs(), memRegionTable);
 }

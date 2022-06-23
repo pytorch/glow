@@ -52,11 +52,17 @@ struct Allocation {
   /// Allocation request type flag: true for ALLOC, false for FREE.
   bool alloc;
 
+  /// Constructors.
   Allocation(Handle handle, bool alloc, uint64_t size)
       : handle(handle), size(size), alloc(alloc) {}
 
   Allocation(size_t id, bool alloc, uint64_t size)
       : handle((Handle)(id)), size(size), alloc(alloc) {}
+
+  Allocation(const Allocation &other)
+      : handle(other.handle), size(other.size), alloc(other.alloc) {}
+
+  Allocation() : handle(nullptr), size(0), alloc(false) {}
 };
 
 /// A POD struct that represents a single half-open allocation [start .. end).
