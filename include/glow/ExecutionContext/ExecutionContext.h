@@ -65,6 +65,9 @@ class ExecutionContext {
   /// Execution state ID
   int64_t stateId_{-1};
 
+  /// Mark if this context belongs to the last node.
+  bool lastNode_{true};
+
 public:
   ExecutionContext()
       : placeholderBindings_(glow::make_unique<PlaceholderBindings>()) {}
@@ -185,7 +188,11 @@ public:
 
   void setStateId(int64_t stateId) { stateId_ = stateId; }
 
-  int64_t getStateId() { return stateId_; }
+  int64_t getStateId() const { return stateId_; }
+
+  bool isLastNode() const { return lastNode_; }
+
+  void setLastNode(bool isLastNode) { lastNode_ = isLastNode; }
 };
 
 } // namespace glow
