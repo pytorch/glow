@@ -25,6 +25,8 @@
 #include <folly/String.h>
 #include <folly/dynamic.h>
 
+// to export
+//
 namespace glow {
 
 /// Get ElemKind from typeStr.
