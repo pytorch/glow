@@ -133,11 +133,22 @@ Value *glow::valueForNode(
 
 std::vector<dim_t> glow::getOffsets(const folly::dynamic &node) {
   const auto &inputs = getNodeKwargs(node);
-  auto shape = node["shape"].asString();
+  const std::string shape = glow::getNodeShapeAsString(node);
   auto count = std::count(shape.begin(), shape.end(), ',') + 1;
   std::vector<dim_t> offsets(count, 0);
   auto dim = inputs["dim"].asInt();
   auto start = inputs["start"].asInt();
   offsets[dim] = start;
   return offsets;
+}
+
+std::string glow::getNodeShapeAsString(const folly::dynamic &node) {
+  if (node.find("shape") != node.items().end()) {
+    return node.at("shape").getString();
+  }
+  const auto &kwargs = getNodeKwargs(node);
+  CHECK(kwargs.find("out_memref") != kwargs.items().end())
+      << "Neither shape nor out_memref exists in node " << node << "\n";
+  const auto &out_memref = kwargs["out_memref"]; // tensor view
+  return out_memref.at("shape").getString();
 }

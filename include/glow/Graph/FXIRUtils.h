@@ -30,6 +30,9 @@ namespace glow {
 /// Get ElemKind from typeStr.
 ElemKind getElemKind(const std::string &dtypeStr);
 
+/// Get the kwargs of the node.
+const folly::dynamic &getNodeKwargs(const folly::dynamic &node);
+
 /// Helper function to convert \p intArrayStr like "[1, 2, 3]" or "(1, 2, 3)"
 /// to vector [1, 2, 3]. If \p length is greater than 0, append the vector with
 /// last element to such length. \returns a vector of length size.
@@ -91,9 +94,14 @@ std::vector<T> toIntegerArray(const folly::dynamic &dyn,
 }
 
 template <class T> std::vector<T> getNodeStride(const folly::dynamic &node) {
-  CHECK(node.find("stride") != node.items().end())
-      << "stride field doesn't exist in node " << node;
-  return toIntegerArray<glow::dim_t>(node.at("stride").getString());
+  if (node.find("stride") != node.items().end()) {
+    return toIntegerArray<glow::dim_t>(node.at("stride").getString());
+  }
+  const auto &kwargs = getNodeKwargs(node);
+  CHECK(kwargs.find("out_memref") != kwargs.items().end())
+      << "Neither stride nor out_memref exists in node " << node << "\n";
+  const auto &out_memref = kwargs["out_memref"]; // tensor view
+  return toIntegerArray<glow::dim_t>(out_memref.at("stride").getString());
 }
 
 /// Get the opCode of the node.
@@ -108,10 +116,11 @@ std::string getNodeTarget(const folly::dynamic &node);
 /// Get the data type of the node.
 ElemKind getNodeDataType(const folly::dynamic &node);
 
+std::string getNodeShapeAsString(const folly::dynamic &node);
+
 template <class T> std::vector<T> getNodeShape(const folly::dynamic &node) {
-  CHECK(node.find("shape") != node.items().end())
-      << "shape field doesn't exist in node " << node;
-  return toIntegerArray<glow::dim_t>(node.at("shape").getString());
+  const std::string shapeString = getNodeShapeAsString(node);
+  return toIntegerArray<glow::dim_t>(shapeString);
 }
 
 /// Checks if node's padded.
@@ -119,9 +128,6 @@ bool isNodePadded(const folly::dynamic &node);
 
 /// Get the arg of the node.
 const folly::dynamic &getNodeArgs(const folly::dynamic &node);
-
-/// Get the kwargs of the node.
-const folly::dynamic &getNodeKwargs(const folly::dynamic &node);
 
 template <class T> std::vector<T> getConvStride(const folly::dynamic &node) {
   const auto &inputs = getNodeKwargs(node);
