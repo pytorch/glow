@@ -387,28 +387,30 @@ public:
       insertSymbolIntoPlaceholderBindings(input, nodeInputBindings);
       insertSymbolIntoPlaceholderBindings(input, nodeOutputBindings);
 
-      RuntimeSymbolInfo runtimeSymbolInfo;
+      auto runtimeSymbolInfoPtr = std::make_shared<RuntimeSymbolInfo>();
+      auto &runtimeSymbolInfo = *runtimeSymbolInfoPtr;
       runtimeSymbolInfo.size = type_->getSizeInBytes();
       runtimeSymbolInfo.offset = offset;
       runtimeSymbolInfo.type = *type_;
       runtimeSymbolInfo.input = true;
       runtimeSymbolInfo.output = false;
       runtimeSymbolInfo.symbolCategory = SymbolCategory::Placeholder;
-      symbolTable.insert(std::make_pair(input, runtimeSymbolInfo));
+      symbolTable.insert(std::make_pair(input, runtimeSymbolInfoPtr));
       offset += type_->getSizeInBytes();
     }
 
     for (const auto &output : outputs) {
       insertSymbolIntoPlaceholderBindings(output, nodeOutputBindings);
 
-      RuntimeSymbolInfo runtimeSymbolInfo;
+      auto runtimeSymbolInfoPtr = std::make_shared<RuntimeSymbolInfo>();
+      auto &runtimeSymbolInfo = *runtimeSymbolInfoPtr;
       runtimeSymbolInfo.size = type_->getSizeInBytes();
       runtimeSymbolInfo.offset = offset;
       runtimeSymbolInfo.type = *type_;
       runtimeSymbolInfo.input = false;
       runtimeSymbolInfo.output = true;
       runtimeSymbolInfo.symbolCategory = SymbolCategory::Placeholder;
-      symbolTable.insert(std::make_pair(output, runtimeSymbolInfo));
+      symbolTable.insert(std::make_pair(output, runtimeSymbolInfoPtr));
       offset += type_->getSizeInBytes();
     }
 
@@ -511,7 +513,7 @@ private:
 
       for (const auto &symbolPair : symbolTable) {
         const auto &symbolName = symbolPair.first;
-        const auto &symbolInfo = symbolPair.second;
+        const auto &symbolInfo = *symbolPair.second;
 
         if (symbolInfo.input) {
           inputSymbols.emplace_back(symbolName);
@@ -534,7 +536,7 @@ private:
 
       for (const auto &symbolPair : symbolTable) {
         const auto &symbolName = symbolPair.first;
-        const auto &symbolInfo = symbolPair.second;
+        const auto &symbolInfo = *symbolPair.second;
 
         if (symbolInfo.output) {
           outputSymbols.emplace_back(symbolName);

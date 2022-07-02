@@ -15,6 +15,7 @@
  */
 
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
+#include "glow/Backend/BackendUtils.h"
 #include "glow/Base/DimType.h"
 
 #include "glow/LLVMIRCodeGen/AllocationsInfo.h"
@@ -442,11 +443,13 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
          "Value address was not allocated");
 
   assert(allocationsInfo_.valueNumbers_.count(val));
-  auto &kindAndValue = allocationsInfo_.valueNumbers_[val];
+  auto &memRegionAndNumber = allocationsInfo_.valueNumbers_[val];
+  auto memRegionId = memRegionAndNumber.first;
+  auto valNumber = memRegionAndNumber.second;
 
   // Get the required base address.
   llvm::Value *baseAddrValue = nullptr;
-  switch (kindAndValue.first) {
+  switch (memRegionId) {
   case AllocationsInfo::ValueKind::Activation:
     baseAddrValue = baseActivationsAddr_;
     break;
@@ -456,6 +459,8 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case AllocationsInfo::ValueKind::MutableWeight:
     baseAddrValue = baseMutableWeightVarsAddr_;
     break;
+  default:
+    llvm_unreachable("Unknown memory region");
   }
 
   // Use relative addressing.
@@ -463,7 +468,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   auto sizeTTy = builder.getIntNTy(getLibjitSizeTWidth());
   auto dimTTy = builder.getIntNTy(DIM_T_BITWIDTH);
 
-  auto valueIdx = llvm::ConstantInt::get(dimTTy, kindAndValue.second);
+  auto valueIdx = llvm::ConstantInt::get(dimTTy, valNumber);
   auto offsetAddr = builder.CreateGEP(dimTTy, offsetsArray_, valueIdx);
   auto offsetValue = builder.CreateLoad(dimTTy, offsetAddr);
   // Add offset to the base address.

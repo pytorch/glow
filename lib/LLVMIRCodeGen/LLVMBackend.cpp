@@ -41,10 +41,7 @@ namespace {
 
 /// Perform memory allocation for a JIT execution.
 void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
-  allocationsInfo.numberValues(F);
-  allocationsInfo.allocateWeightVars(F);
-  allocationsInfo.allocateActivations(F);
-  allocationsInfo.allocateTensorViews(F);
+  allocationsInfo.allocate(F);
 }
 
 } // end namespace

@@ -34,11 +34,10 @@ class PlaceholderBindings;
 /// and mutable weight variables.
 class AllocationsInfo {
 public:
-  /// Different kinds of values that need to be allocated.
-  enum class ValueKind { ConstantWeight, MutableWeight, Activation };
-  using KindAndNumber = std::pair<ValueKind, size_t>;
+  using ValueKind = runtime::MemoryRegions;
+  using MemRegionAndNumber = std::pair<runtime::MemoryRegionId, size_t>;
   /// Map Values in the module to their numbers.
-  llvm::DenseMap<const Kinded *, KindAndNumber> valueNumbers_;
+  llvm::DenseMap<const Kinded *, MemRegionAndNumber> valueNumbers_;
   /// To get the offset of a given value simply use
   /// numberOffsets_[valueNumbers_[v]]
 
@@ -54,11 +53,11 @@ public:
   uint8_t *baseConstantWeightVarsStore_{nullptr};
 
   /// Ctor.
-  AllocationsInfo()
-      : constantWeightVarsAllocator_("ConstantWeights", 0),
-        mutableWeightVarsAllocator_("MutableWeights", 0),
-        activationsAllocator_("Activations", 0) {}
+  AllocationsInfo();
+  /// Dtor.
   virtual ~AllocationsInfo() = default;
+  /// Perform allocation for the function \p F.
+  virtual void allocate(const IRFunction *F);
   /// Assign offsets to all of the variables in the module \p M and to the
   /// placeholders.
   virtual void allocateWeightVars(const IRFunction *F);
@@ -87,8 +86,25 @@ public:
   const glow::runtime::SymbolTableTy &getSymbolTable() const {
     return symbolTable_;
   }
+  const glow::runtime::RuntimeBundle &getRuntimeBundle() const {
+    return runtimeBundle_;
+  }
+  glow::runtime::SymbolTableTy &getSymbolTable() { return symbolTable_; }
+  glow::runtime::RuntimeBundle &getRuntimeBundle() { return runtimeBundle_; }
+  std::shared_ptr<runtime::MemoryRegionDescriptions>
+  getMemoryRegionDescriptions() const {
+    return memRegionDescriptions_;
+  }
+  void
+  setMemoryRegionDescriptions(std::shared_ptr<runtime::MemoryRegionDescriptions>
+                                  memRegionDescriptions) {
+    memRegionDescriptions_ = memRegionDescriptions;
+  }
 
 protected:
+  /// Initialize internal tables to prepare for processing of the function \p F.
+  virtual void initTables(const IRFunction *F);
+
   /// Index to be used for a new value.
   size_t valueIdx_{0};
   /// Use two different allocators, because constant weights and mutable weights
@@ -98,8 +114,14 @@ protected:
   /// Use a memory allocator with no upper bound on how much memory we can
   /// allocate.
   MemoryAllocator activationsAllocator_;
+  /// Runtime bundle for the allocated symbols.
+  glow::runtime::RuntimeBundle runtimeBundle_;
   /// Symbol table for the allocated symbols.
-  glow::runtime::SymbolTableTy symbolTable_;
+  glow::runtime::SymbolTableTy &symbolTable_;
+  /// Set of processed functions.
+  std::set<const glow::IRFunction *> processedFuncs_;
+  /// Descriptions of memory regions if available.
+  std::shared_ptr<runtime::MemoryRegionDescriptions> memRegionDescriptions_;
 };
 
 } // namespace glow

@@ -812,12 +812,7 @@ void BundleSaver::emitBundleConfig() {
 void BundleSaver::performBundleMemoryAllocation() {
   // Perform memory allocation for the current function.
   auto *F = savedIRFunctions_.back().savedF;
-  allocationsInfo_.numberValues(F);
-  // Tell the allocateWeightVars to not reuse any existing addresses for
-  // weights and to assign new ones.
-  allocationsInfo_.allocateWeightVars(F);
-  allocationsInfo_.allocateActivations(F);
-  allocationsInfo_.allocateTensorViews(F);
+  allocationsInfo_.allocate(F);
 }
 
 void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {

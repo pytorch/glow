@@ -76,6 +76,7 @@ public:
   bool getSaveWeightsAsText() const { return saveWeightsAsText_; }
 
   const AllocationsInfo &getAllocationsInfo() const { return allocationsInfo_; }
+  AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
 
 protected:
   /// Perform memory allocation for a bundle.

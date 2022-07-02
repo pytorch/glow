@@ -1,7 +1,8 @@
 add_library(Backend
               Backend.cpp
               BackendUtils.cpp
-              CompiledFunction.cpp)
+              CompiledFunction.cpp
+              MemoryRegions.cpp)
 target_link_libraries(Backend
                       PUBLIC
                         ExecutionContext

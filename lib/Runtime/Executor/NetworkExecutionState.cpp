@@ -179,7 +179,7 @@ void NetworkExecutionState::init(
     // Add inputs/outputs to the context. Skip any marked as static.
     for (const auto &symbolPair : symbolTable) {
       const auto &symbolName = symbolPair.first;
-      const auto &symbolInfo = symbolPair.second;
+      const auto &symbolInfo = *symbolPair.second;
       if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
         auto PH = module_->getPlaceholderByNameSlow(symbolName);
 
