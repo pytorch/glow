@@ -191,8 +191,9 @@ protected:
   /// Whether to print the TFLite Custom Operator callback API.
   bool printTFLiteCustomOperator_{false};
 
-  /// \returns the LLVM pointer type for a payload of \p val based on its type.
-  virtual llvm::Type *getLLVMPtrType(const glow::Value *val);
+  /// \returns the LLVM pointer type for the element kind \p kind based on its
+  /// type.
+  virtual llvm::Type *getLLVMPtrType(glow::ElemKind kind);
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.

@@ -378,9 +378,9 @@ void LLVMIRGen::finishCodeGen() {
   }
 }
 
-llvm::Type *LLVMIRGen::getLLVMPtrType(const glow::Value *val) {
+llvm::Type *LLVMIRGen::getLLVMPtrType(glow::ElemKind kind) {
   llvm::Type *T = nullptr;
-  switch (val->getElementType()) {
+  switch (kind) {
   case ElemKind::FloatTy:
     T = llvm::Type::getFloatPtrTy(getLLVMContext());
     break;
@@ -431,7 +431,7 @@ llvm::Type *LLVMIRGen::getLLVMPtrType(const glow::Value *val) {
     break;
   default:
     LOG(FATAL) << "Unsupported element type: "
-               << Type::getElementName(val->getElementType()).str();
+               << Type::getElementName(kind).str();
   }
   return T;
 }
@@ -469,7 +469,7 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   // Add offset to the base address.
   llvm::Value *addr = builder.CreateAdd(
       baseAddrValue, builder.CreateZExt(offsetValue, sizeTTy));
-  return builder.CreateIntToPtr(addr, getLLVMPtrType(val));
+  return builder.CreateIntToPtr(addr, getLLVMPtrType(val->getElementType()));
 }
 
 llvm::Value *
