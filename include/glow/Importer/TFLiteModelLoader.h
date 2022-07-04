@@ -120,11 +120,17 @@ class TFLiteModelLoader {
   /// \returns the operator custom options as a map.
   Expected<flexbuffers::Map> getOperatorCustomOpts(const tflite::Operator *op);
 
+  /// \returns the number of inputs for the operator \p op.
+  Expected<size_t> getOperatorNumInputs(const tflite::Operator *op);
+
   /// \returns the tensor index of the input operand with index \p inputIdx
   /// of the operator \p op. This function returns a negative number if the
   /// tensor does not exist (is not used).
   Expected<int32_t> getOperatorInputTensorIdx(const tflite::Operator *op,
                                               size_t inputIdx);
+
+  /// \returns the number of outputs for the operator \p op.
+  Expected<size_t> getOperatorNumOutputs(const tflite::Operator *op);
 
   /// \returns the tensor index of the output operand with index \p outputIdx
   /// of the operator \p op.
@@ -150,6 +156,10 @@ class TFLiteModelLoader {
   Expected<NodeValue> getInputNodeValue(const tflite::Operator *op,
                                         size_t inputIdx);
 
+  /// \returns the input node values for the operator \p op.
+  Expected<std::vector<NodeValue>>
+  getInputNodeValues(const tflite::Operator *op);
+
   /// Register the single output node value \p nodeValue for the operator \p op.
   /// The flag \p checkType specifies whether the type of the given node value
   /// is checked to be the same with the type registered in the model.
@@ -157,15 +167,24 @@ class TFLiteModelLoader {
                            bool checkType = true);
 
   /// Register multiple output node values \p nodeValues for the operator \p op.
-  /// The flag \p checkType specifies whether the type of the given node value
-  /// is checked to be the same with the type registered in the model.
+  /// The flag \p checkType specifies whether the types of the given node values
+  /// are checked to be the same with the types registered in the model.
   Error setOutputNodeValues(const tflite::Operator *op,
                             llvm::ArrayRef<NodeValue> nodeValues,
                             bool checkType = true);
 
-  /// \returns the output type for operator \p op with index \p outputIndex.
+  /// Register the output node values of the node \p node for the operator \p
+  /// op. The flag \p checkType specifies whether the types of the given node
+  /// values are checked to be the same with the types registered in the model.
+  Error setOutputNodeValues(const tflite::Operator *op, const Node *node,
+                            bool checkType = true);
+
+  /// \returns the output type for the operator \p op with index \p outputIndex.
   Expected<TypeRef> getOutputType(const tflite::Operator *op,
                                   size_t outputIndex);
+
+  /// \returns the output types for the operator \p op.
+  Expected<std::vector<TypeRef>> getOutputTypes(const tflite::Operator *op);
 
   /// \returns whether the output shape for operator \p op with index
   /// \p outputIndex is undefined.
@@ -358,6 +377,11 @@ class TFLiteModelLoader {
   /// Load TFLite MFCC custom operator.
   Error loadTFLiteMFCC(const tflite::Operator *op, const OperatorInfo &opInfo,
                        const flexbuffers::Map &opts);
+
+  /// Load TFLite generic custom operator.
+  Error loadTFLiteCustomOperator(const tflite::Operator *op,
+                                 const OperatorInfo &opInfo,
+                                 const flexbuffers::Map &opts);
 
 public:
   /// \returns the TensorFlowLite model version.

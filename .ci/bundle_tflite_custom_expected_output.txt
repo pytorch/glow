@@ -1,0 +1,20 @@
+TFLite Custom Operator
+Type: MyCustomOperator
+Options (raw):
+  Size (uint8) = 43
+  Vals (uint8) = 105, 110, 116, 95, 102, 105, 101, 108, 100, 0, 115, 116, 114, 105, 110, 103, 95, 102, 105, 101, 108, 100, 0, 5, 100, 117, 109, 109, 121, 0, 2, 31, 22, 2, 1, 2, 13, 13, 4, 20, 4, 36, 1, 
+Options (flexbuffer):
+  int_field = 13
+  string_field = dummy
+Input[0]:
+  Size (f32) = 1
+  Vals (f32) = 1.000000, 
+Input[1]:
+  Size (f32) = 2
+  Vals (f32) = 1.000000, 2.000000, 
+Output[0]:
+  Size (f32) = 3
+  Vals (f32) = 1.000000, 2.000000, 3.000000, 
+Output[1]:
+  Size (f32) = 4
+  Vals (f32) = 0.000000, 0.000000, 0.000000, 0.000000, 

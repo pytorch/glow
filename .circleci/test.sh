@@ -76,6 +76,14 @@ run_and_check_bundle_with_extra_objects() {
     cd -
 }
 
+run_and_check_bundle_tflite_custom() {
+    cd "${GLOW_BUILD_DIR}/bundles/bundle_tflite_custom/"
+    # Compare console output.
+    ./BundleTFLiteCustom >> raw_results.txt
+    diff raw_results.txt "${GLOW_SRC}/.ci/bundle_tflite_custom_expected_output.txt"
+    cd -
+}
+
 run_pytorch_tests() {
     cd "${GLOW_SRC}/torch_glow"
     if hash sccache 2>/dev/null; then
@@ -122,6 +130,7 @@ case ${CIRCLE_JOB} in
         run_and_check_bundle_instrument
         run_and_check_bundle_with_multiple_entries
         run_and_check_bundle_with_extra_objects
+        run_and_check_bundle_tflite_custom
         ;;
     COVERAGE)
         cd "${GLOW_SRC}"

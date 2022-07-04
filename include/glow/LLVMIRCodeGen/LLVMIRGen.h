@@ -188,6 +188,9 @@ protected:
   /// Whether to print the IR instrumentation callback API.
   bool printInstrumentIR_{false};
 
+  /// Whether to print the TFLite Custom Operator callback API.
+  bool printTFLiteCustomOperator_{false};
+
   /// \returns the LLVM pointer type for a payload of \p val based on its type.
   virtual llvm::Type *getLLVMPtrType(const glow::Value *val);
 

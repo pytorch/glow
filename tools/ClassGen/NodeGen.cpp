@@ -1692,6 +1692,20 @@ int main(int argc, char **argv) {
           "usage will be given by the 'NumDetections' output. ");
 
   //===--------------------------------------------------------------------===//
+  //                Custom nodes
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("TFLiteCustomOperator")
+      .addVariableInput("Inputs")
+      .addVariableResult("Outputs")
+      .addMember(MemberType::String, "OperatorType")
+      .addMember(MemberType::String, "OperatorOptions")
+      .setDocstring("This node is a TensorFlowLite custom operator and can be "
+                    "used to describe at graph level a user defined operator "
+                    "for which the implementation is provided externally as a "
+                    "hook (callback) through a registration mechanism.");
+
+  //===--------------------------------------------------------------------===//
   //                Region of Interest nodes
   //===--------------------------------------------------------------------===//
 

@@ -105,6 +105,23 @@ llvm::cl::opt<float> tfliteMfccSampleRateOpt(
     llvm::cl::init(16000.0), llvm::cl::Optional,
     llvm::cl::cat(tfliteModelLoaderCat));
 
+llvm::cl::opt<bool> tfliteEnableCustomOperatorOpt(
+    "tflite-enable-custom-operator",
+    llvm::cl::desc("Option to enable loading a generic custom operator as a "
+                   "placeholder when an unknown custom operator is "
+                   "encountered. This allows providing an implementation for "
+                   "the custom operator as a user defined operator."),
+    llvm::cl::init(true), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
+llvm::cl::opt<std::string> tfliteDumpGraphOpt(
+    "tflite-dump-graph",
+    llvm::cl::desc("Option to dump the graph AFTER importing the TFLite model. "
+                   "This options is provided with the file path of the output "
+                   "DOT file (default is empty)."),
+    llvm::cl::init(""), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
 /// Function to read a TensorFlowLite model from the file \p modelFilename into
 /// the data buffer \p modelData provided by the caller. The \p modelData buffer
 /// is allocated and initialized by this function but the caller must ensure its
@@ -668,6 +685,17 @@ TFLiteModelLoader::getOperatorCustomOpts(const tflite::Operator *op) {
   return flexbuffers::GetRoot(optsAddr, optsSize).AsMap();
 }
 
+Expected<size_t>
+TFLiteModelLoader::getOperatorNumInputs(const tflite::Operator *op) {
+  std::string opType;
+  ASSIGN_VALUE_OR_RETURN_ERR(opType, getOperatorType(op));
+  const auto *opInputs = op->inputs();
+  RETURN_ERR_IF_NOT(opInputs,
+                    strFormat("TensorFlowLite: Operator '%s' has no inputs!",
+                              opType.c_str()));
+  return opInputs->size();
+}
+
 Expected<int32_t>
 TFLiteModelLoader::getOperatorInputTensorIdx(const tflite::Operator *op,
                                              size_t inputIdx) {
@@ -682,6 +710,17 @@ TFLiteModelLoader::getOperatorInputTensorIdx(const tflite::Operator *op,
                               "is out of range! Operator has %d inputs!",
                               opType.c_str(), inputIdx, opInputs->size()));
   return (*opInputs)[inputIdx];
+}
+
+Expected<size_t>
+TFLiteModelLoader::getOperatorNumOutputs(const tflite::Operator *op) {
+  std::string opType;
+  ASSIGN_VALUE_OR_RETURN_ERR(opType, getOperatorType(op));
+  const auto *opOutputs = op->outputs();
+  RETURN_ERR_IF_NOT(opOutputs,
+                    strFormat("TensorFlowLite: Operator '%s' has no outputs!",
+                              opType.c_str()));
+  return opOutputs->size();
 }
 
 Expected<size_t>
@@ -755,6 +794,18 @@ TFLiteModelLoader::getInputNodeValue(const tflite::Operator *op,
   return getNodeValueByIndex(tensorIdx);
 }
 
+Expected<std::vector<NodeValue>>
+TFLiteModelLoader::getInputNodeValues(const tflite::Operator *op) {
+  size_t numInputs;
+  ASSIGN_VALUE_OR_RETURN_ERR(numInputs, getOperatorNumInputs(op));
+  std::vector<NodeValue> inputs(numInputs);
+  for (size_t inputIdx = 0; inputIdx < numInputs; inputIdx++) {
+    ASSIGN_VALUE_OR_RETURN_ERR(inputs[inputIdx],
+                               getInputNodeValue(op, inputIdx));
+  }
+  return inputs;
+}
+
 Error TFLiteModelLoader::setOutputNodeValue(const tflite::Operator *op,
                                             NodeValue nodeValue,
                                             bool checkType) {
@@ -798,6 +849,18 @@ Error TFLiteModelLoader::setOutputNodeValues(
   return Error::success();
 }
 
+Error TFLiteModelLoader::setOutputNodeValues(const tflite::Operator *op,
+                                             const Node *node, bool checkType) {
+  // Get node output values.
+  size_t numOutputs = node->getNumResults();
+  std::vector<NodeValue> nodeValues(numOutputs);
+  for (size_t outputIndex = 0; outputIndex < numOutputs; outputIndex++) {
+    nodeValues[outputIndex] = node->getNthResult(outputIndex);
+  }
+  // Set node output values.
+  return setOutputNodeValues(op, nodeValues, checkType);
+}
+
 Expected<TypeRef> TFLiteModelLoader::getOutputType(const tflite::Operator *op,
                                                    size_t outputIndex) {
   size_t tensorIdx;
@@ -808,6 +871,18 @@ Expected<TypeRef> TFLiteModelLoader::getOutputType(const tflite::Operator *op,
   Type type;
   ASSIGN_VALUE_OR_RETURN_ERR(type, getTensorType(tensor));
   return mod_.uniqueType(type);
+}
+
+Expected<std::vector<TypeRef>>
+TFLiteModelLoader::getOutputTypes(const tflite::Operator *op) {
+  size_t numOutputs;
+  ASSIGN_VALUE_OR_RETURN_ERR(numOutputs, getOperatorNumOutputs(op));
+  std::vector<TypeRef> outputTypes(numOutputs);
+  for (size_t outputIndex = 0; outputIndex < numOutputs; outputIndex++) {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputTypes[outputIndex],
+                               getOutputType(op, outputIndex));
+  }
+  return outputTypes;
 }
 
 Expected<bool>
@@ -1409,6 +1484,10 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
     }
     if (customOpCode == "Mfcc") {
       return loadTFLiteMFCC(op, opInfo, opts);
+    }
+    // Load generic custom operator.
+    if (tfliteEnableCustomOperatorOpt) {
+      return loadTFLiteCustomOperator(op, opInfo, opts);
     }
   }
   return MAKE_ERR(
@@ -3087,6 +3166,38 @@ Error TFLiteModelLoader::loadTFLiteMFCC(const tflite::Operator *op,
   return setOutputNodeValue(op, output, /* checkType */ false);
 }
 
+Error TFLiteModelLoader::loadTFLiteCustomOperator(
+    const tflite::Operator *op, const OperatorInfo &opInfo,
+    const flexbuffers::Map &opts) {
+  std::vector<NodeValue> inputs;
+  ASSIGN_VALUE_OR_RETURN_ERR(inputs, getInputNodeValues(op));
+  std::vector<TypeRef> outputTypes;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputTypes, getOutputTypes(op));
+
+  // Get custom operator type/code and options/attributes.
+  std::string operatorType;
+  ASSIGN_VALUE_OR_RETURN_ERR(operatorType, getOperatorCustomCode(op));
+
+  // Get custom operator raw options/attributes.
+  auto *customOpts = op->custom_options();
+  RETURN_ERR_IF_NOT(customOpts,
+                    strFormat("TensorFlowLite: Missing custom options for "
+                              "opcode_index %d!",
+                              op->opcode_index()));
+  size_t optsSize = customOpts->size();
+  const char *optsAddr = reinterpret_cast<const char *>(customOpts->data());
+  RETURN_ERR_IF_NOT(optsAddr,
+                    strFormat("TensorFlowLite: Missing custom options for "
+                              "opcode_index %d!",
+                              op->opcode_index()));
+  std::string operatorOptions(optsAddr, optsSize);
+
+  // Create TFLite custom operator node.
+  TFLiteCustomOperatorNode *node = F_->createTFLiteCustomOperator(
+      opInfo.name, outputTypes, inputs, operatorType, operatorOptions);
+  return setOutputNodeValues(op, node, /* checkType */ true);
+}
+
 TFLiteModelLoader::TFLiteModelLoader(const std::string &modelFilename,
                                      Function *F)
     : F_(F), mod_(*F->getParent()) {
@@ -3099,7 +3210,9 @@ TFLiteModelLoader::TFLiteModelLoader(const std::string &modelFilename,
 
     // Get model info.
     modelVersion_ = model_->version();
-    modelDescription_ = model_->description()->str();
+    if (model_->description()) {
+      modelDescription_ = model_->description()->str();
+    }
 
     // Get model graph.
     const auto *modelGraphs = model_->subgraphs();
@@ -3126,6 +3239,11 @@ TFLiteModelLoader::TFLiteModelLoader(const std::string &modelFilename,
     // Verify function.
     RETURN_ERR_IF_NOT(F_->verify(),
                       "TensorFlowLite: Function verification failed!");
+
+    // Dump the graph after import.
+    if (!tfliteDumpGraphOpt.empty()) {
+      F->dumpDAG(tfliteDumpGraphOpt);
+    }
 
     return Error::success();
   };

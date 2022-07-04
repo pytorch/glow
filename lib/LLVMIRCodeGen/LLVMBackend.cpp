@@ -546,6 +546,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
            NI.getOutElemTy(TFLiteDetectionPostProcessNode::NumDetectionsIdx) ==
                ElemKind::Int32ITy;
 
+  case Kinded::Kind::TFLiteCustomOperatorNodeKind:
+    return true;
+
   case Kinded::Kind::AudioSpectrogramNodeKind:
     return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
                ElemKind::FloatTy &&
