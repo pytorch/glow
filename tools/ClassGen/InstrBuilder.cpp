@@ -37,7 +37,7 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 
   // The variable operands of the instruction class:
   for (const auto &op : variableOperands_) {
-    os << ", std::vector<Value *> " << op.first;
+    os << ", llvm::ArrayRef<Value *> " << op.first;
   }
 
   // Extra class members:

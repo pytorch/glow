@@ -115,14 +115,14 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     // Get instruction inputs.
     size_t numInputs = TCON->getNumInputs();
-    std::vector<Value *> inputs(numInputs);
+    llvm::SmallVector<Value *, 8> inputs(numInputs);
     for (size_t inputIdx = 0; inputIdx < numInputs; ++inputIdx) {
       inputs[inputIdx] = valueForNode(TCON->getNthInput(inputIdx));
     }
 
     // Allocate instruction outputs.
     size_t numOutputs = TCON->getNumResults();
-    std::vector<Value *> outputs(numOutputs);
+    llvm::SmallVector<Value *, 8> outputs(numOutputs);
     for (size_t outputIdx = 0; outputIdx < numOutputs; ++outputIdx) {
       outputs[outputIdx] = builder_.createAllocActivationInst(
           TCON->getName().str() + "." + std::to_string(outputIdx),
