@@ -7734,6 +7734,11 @@ static void tflite_detection_post_process_f(
   }
 }
 
+void BoundInterpreterFunction::fwdTFLiteCustomOperatorInst(
+    glow::TFLiteCustomOperatorInst const *I) {
+  DCHECK(!"TFLiteCustomOperator is not implemented for Interpreter!");
+}
+
 void BoundInterpreterFunction::fwdTFLiteDetectionPostProcessInst(
     glow::TFLiteDetectionPostProcessInst const *I) {
   auto boxes = I->getBoxes();

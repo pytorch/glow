@@ -4213,6 +4213,20 @@ __attribute__((noinline)) void libjit_instrument_after(int id, int kind,
                                                        int *opSize) {
   glow_instrument_after(id, kind, opInp, opOut, opAddr, opSize);
 }
+
+/// TFLite custom operator callback.
+void glow_tflite_custom_operator(const char *type, const uint8_t *optsAddr,
+                                 int optsSize, int opInp, int opOut,
+                                 uint8_t **opAddr, int *opSize);
+
+__attribute__((noinline)) void
+libjit_glow_tflite_custom_operator(const char *type, const uint8_t *optsAddr,
+                                   int optsSize, int opInp, int opOut,
+                                   uint8_t **opAddr, int *opSize) {
+  glow_tflite_custom_operator(type, optsAddr, optsSize, opInp, opOut, opAddr,
+                              opSize);
+}
+
 #endif
 
 } // extern "C"

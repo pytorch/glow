@@ -124,7 +124,12 @@ public:
     return *this;
   }
 
-  /// Add a variable result to the node. Format type, name.
+  /// Add a variable input to the node.
+  NodeBuilder &addVariableInput(const std::string &name) {
+    return addMember(MemberType::VectorNodeValue, name);
+  }
+
+  /// Add a variable result to the node.
   NodeBuilder &addVariableResult(const std::string &name) {
     MemberTypeInfo typeInfo = {MemberType::VectorNodeValue};
     typeInfo.addSetter = false;

@@ -110,6 +110,45 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     // Include all automatically generated cases:
 #include "glow/AutoGenIRGen.h"
 
+  case glow::Kinded::Kind::TFLiteCustomOperatorNodeKind: {
+    auto *TCON = cast<TFLiteCustomOperatorNode>(N);
+
+    // Get instruction inputs.
+    size_t numInputs = TCON->getNumInputs();
+    llvm::SmallVector<Value *, 8> inputs(numInputs);
+    for (size_t inputIdx = 0; inputIdx < numInputs; ++inputIdx) {
+      inputs[inputIdx] = valueForNode(TCON->getNthInput(inputIdx));
+    }
+
+    // Allocate instruction outputs.
+    size_t numOutputs = TCON->getNumResults();
+    llvm::SmallVector<Value *, 8> outputs(numOutputs);
+    for (size_t outputIdx = 0; outputIdx < numOutputs; ++outputIdx) {
+      outputs[outputIdx] = builder_.createAllocActivationInst(
+          TCON->getName().str() + "." + std::to_string(outputIdx),
+          TCON->getNthResult(outputIdx).getType());
+    }
+
+    // Allocate scratch space for operand information.
+    unsigned allocSize = (numInputs + numOutputs) * 2 * sizeof(int64_t);
+    allocSize = std::max(1u, allocSize);
+    auto *allocTy =
+        F_->getParent()->uniqueType(ElemKind::Int8QTy, {allocSize}, 0.0, 0);
+    Value *operandsInfo = builder_.createAllocActivationInst(
+        TCON->getName().str() + ".OperandsInfo", allocTy);
+
+    // Create instruction.
+    builder_.createTFLiteCustomOperatorInst(
+        TCON->getName(), operandsInfo, outputs, inputs, TCON->getOperatorType(),
+        TCON->getOperatorOptions());
+
+    // Register outputs.
+    for (size_t outputIdx = 0; outputIdx < numOutputs; ++outputIdx) {
+      registerIR(TCON->getNthResult(outputIdx), outputs[outputIdx]);
+    }
+    break;
+  }
+
   case glow::Kinded::Kind::ReshapeNodeKind: {
     auto *RN = cast<ReshapeNode>(N);
 

@@ -35,6 +35,11 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
     os << ", Value *" << op.first;
   }
 
+  // The variable operands of the instruction class:
+  for (const auto &op : variableOperands_) {
+    os << ", llvm::ArrayRef<Value *> " << op.first;
+  }
+
   // Extra class members:
   for (const auto &op : members_) {
     os << ", " << getStorageTypename(&op.first) << " " << op.second;
@@ -42,22 +47,45 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 
   // Initialize the base clases:
   os << ")\n      : Instruction(name, Kinded::Kind::" << name_ << "InstKind, "
-     << ty_ << ", {\n";
+     << ty_;
 
   // The operands of the instruction class:
-  for (const auto &op : operands_) {
-    os << "          {" << op.first
-       << ", OperandKind::" << getOperandKindStr(op.second) << "},\n";
+  if (operands_.empty()) {
+    os << ", {}";
+  } else {
+    os << ", {\n";
+    for (const auto &op : operands_) {
+      os << "          {" << op.first
+         << ", OperandKind::" << getOperandKindStr(op.second) << "},\n";
+    }
+    os << "      }";
   }
-  os << "      })";
+  os << ")";
 
   // Initialize the members:
   for (const auto &op : members_) {
     os << ", " << op.second << "_(" << op.second << ")";
   }
 
-  // Empty constructor body.
-  os << " {}\n\n";
+  // Emit constructor body.
+  if (variableOperands_.empty()) {
+    // Empty constructor body.
+    os << " {}\n\n";
+  } else {
+    // Add the variable operands in the constructor.
+    os << " {\n";
+    for (const auto &op : variableOperands_) {
+      // Set the variable operand count and offset.
+      os << "    " << op.first << "Num_ = " << op.first << ".size();\n";
+      os << "    " << op.first << "Off_ = getNumOperands();\n";
+      // Add the the operands.
+      os << "    for (Value *value : " << op.first << ") {\n";
+      os << "      pushOperand(Operand(value, OperandKind::"
+         << getOperandKindStr(op.second) << "));\n";
+      os << "    }\n";
+    }
+    os << "  }\n\n";
+  }
 }
 
 void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
@@ -77,6 +105,12 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
     }
     osH << ", Value *" << op.first;
     osB << ", Value *" << op.first;
+  }
+
+  // The variable operands of the instruction class:
+  for (const auto &op : variableOperands_) {
+    osH << ", llvm::ArrayRef<Value *> " << op.first;
+    osB << ", llvm::ArrayRef<Value *> " << op.first;
   }
 
   // Extra class members:
@@ -107,6 +141,12 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
   for (const auto &op : operands_) {
     osB << ", " << op.first;
   }
+
+  // The variable operands of the instruction class:
+  for (const auto &op : variableOperands_) {
+    osB << ", " << op.first;
+  }
+
   // Extra class members:
   for (const auto &op : members_) {
     osB << ", " << op.second;
@@ -174,6 +214,12 @@ void InstrBuilder::emitClassMembers(std::ostream &os) const {
   for (const auto &op : members_) {
     os << "  " << getStorageTypename(&op.first) << " " << op.second << "_;\n";
   }
+  // Emit variable operands offsets and counters as hidden class members.
+  // These will be used later for the variable operands getters.
+  for (const auto &op : variableOperands_) {
+    os << "  size_t " << op.first << "Num_;\n";
+    os << "  size_t " << op.first << "Off_;\n";
+  }
 }
 
 void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
@@ -181,6 +227,17 @@ void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
   // Synthesize the general operand getter.
   os << "  Value *get" << name << "() const { return getOperand(" << index
      << ").first; }\n";
+}
+
+void InstrBuilder::emitVariableOperandGetter(std::ostream &os,
+                                             const std::string &name) const {
+  os << "  std::vector<Value *> get" << name << "() const {\n";
+  os << "    std::vector<Value *> varOps(" << name << "Num_);\n";
+  os << "    for (size_t idx = 0; idx < " << name << "Num_; ++idx) {\n";
+  os << "      varOps[idx] = getOperand(" << name << "Off_ + idx).first;\n";
+  os << "    }\n";
+  os << "    return varOps;\n";
+  os << "  }\n";
 }
 
 void InstrBuilder::emitMemberGetter(std::ostream &os,
@@ -197,6 +254,10 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
   for (int i = 0, e = operands_.size(); i < e; i++) {
     auto &op = operands_[i];
     emitOperandGetter(os, op.first, i);
+  }
+
+  for (const auto &op : variableOperands_) {
+    emitVariableOperandGetter(os, op.first);
   }
 
   for (const auto &op : members_) {
@@ -253,6 +314,10 @@ void InstrBuilder::emitCloner(std::ostream &os) const {
   os << "  return new " << name_ << "Inst(getName()";
 
   for (const auto &op : operands_) {
+    os << ", get" << op.first << "()";
+  }
+
+  for (const auto &op : variableOperands_) {
     os << ", get" << op.first << "()";
   }
 
@@ -448,6 +513,9 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   if (autoIRGenNodeName.empty()) {
     return;
   }
+
+  assert(variableOperands_.empty() &&
+         "AutoIRGen not supported for instructions with variable operands!");
 
   os << "case glow::Kinded::Kind::" << autoIRGenNodeName << "NodeKind: {\n";
   os << "  auto *CN__ = cast<" << autoIRGenNodeName << "Node>(N);\n";

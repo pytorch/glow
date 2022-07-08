@@ -1509,6 +1509,23 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                Custom
+  //===--------------------------------------------------------------------===//
+
+  /// Generic instruction used for a TFLite Custom Operator with a variable
+  /// number of inputs and a variable number of outputs. OperatorType is a
+  /// string which identifies the operator while OperatorOptions are the raw
+  /// operator options/attributes. OperandsInfo is a scratch buffer used to
+  /// store the addresses and the sizes of the operands.
+  BB.newInstr("TFLiteCustomOperator")
+      .addOperand("OperandsInfo", OperandKind::Out)
+      .addVariableOperand("Outputs", OperandKind::Out)
+      .addVariableOperand("Inputs", OperandKind::In)
+      .addMember(MemberType::String, "OperatorType")
+      .addMember(MemberType::String, "OperatorOptions")
+      .autoVerify(VerifyKind::NoVerify);
+
+  //===--------------------------------------------------------------------===//
   //                Region of Interest (ROI)
   //===--------------------------------------------------------------------===//
   BB.newInstr("ROIAlign")

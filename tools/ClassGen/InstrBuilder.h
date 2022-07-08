@@ -85,6 +85,8 @@ class InstrBuilder {
   std::string name_;
   /// The instruction operands.
   std::vector<std::pair<std::string, OperandKind>> operands_;
+  /// The instruction variable operands.
+  std::vector<std::pair<std::string, OperandKind>> variableOperands_;
   /// A list of instruction members. Format: (type, name).
   std::vector<std::pair<MemberTypeInfo, std::string>> members_;
   /// Stores the decl and body of a new public method that will be added to the
@@ -141,6 +143,13 @@ public:
   /// letter. For example: "Input".
   InstrBuilder &addOperand(const std::string &op, OperandKind k) {
     operands_.push_back({op, k});
+    return *this;
+  }
+
+  /// Add a variable operand to the instruction. The name should start with a
+  /// capital letter. For example: "Input".
+  InstrBuilder &addVariableOperand(const std::string &op, OperandKind k) {
+    variableOperands_.push_back({op, k});
     return *this;
   }
 
@@ -264,6 +273,10 @@ private:
   /// Emit the getter for an operand.
   void emitOperandGetter(std::ostream &os, const std::string &name,
                          int index) const;
+
+  /// Emit the getter for a variable operand.
+  void emitVariableOperandGetter(std::ostream &os,
+                                 const std::string &name) const;
 
   /// Emit the getter for a accessible class member.
   void emitMemberGetter(std::ostream &os, const MemberTypeInfo *type,

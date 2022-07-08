@@ -5470,6 +5470,14 @@ TFLiteDetectionPostProcessNode *Function::createTFLiteDetectionPostProcess(
       scoreThreshold, xScale, yScale, hScale, wScale, regularNMS));
 }
 
+TFLiteCustomOperatorNode *Function::createTFLiteCustomOperator(
+    llvm::StringRef name, llvm::ArrayRef<TypeRef> outputTypes,
+    llvm::ArrayRef<NodeValue> inputs, std::string operatorType,
+    std::string operatorOptions) {
+  return addNode(new TFLiteCustomOperatorNode(name, outputTypes, inputs,
+                                              operatorType, operatorOptions));
+}
+
 Constant *Function::createCosineWindow(llvm::StringRef name, dim_t length) {
   auto window = getParent()->createConstant(ElemKind::FloatTy, {length}, name);
   auto windowH = window->getHandle<float>();

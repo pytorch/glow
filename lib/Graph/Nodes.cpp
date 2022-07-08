@@ -2509,6 +2509,8 @@ bool TFLiteDetectionPostProcessNode::verify() const {
   return isValid;
 }
 
+bool TFLiteCustomOperatorNode::verify() const { return true; }
+
 bool AudioSpectrogramNode::verify() const {
   NodeValue input = getInput();
   NodeValue spectrogram = getSpectrogram();

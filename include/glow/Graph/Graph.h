@@ -2331,6 +2331,21 @@ public:
       float iouThreshold, float scoreThreshold, float xScale, float yScale,
       float hScale, float wScale, bool regularNMS);
 
+  /// Create a TensorFlowLite custom operator node with the given \p name,
+  /// output types \p outputTypes and input node values \p inputs. The custom
+  /// operator type is given \p operatorType while the raw operator options are
+  /// given by \p operatorOptions. A custom operator node is used to describe
+  /// at graph level a user defined operator for which the implementation is
+  /// provided externally as a hook (callback) through a registration mechanism.
+  /// Note that this node can have a variable number of inputs and outputs.
+  /// The format of the \p operatorOptions depends on the TFLite model but a
+  /// common format used by TFLite is the flexbuffer format. You can find more
+  /// details here: https://google.github.io/flatbuffers/flexbuffers.html.
+  TFLiteCustomOperatorNode *createTFLiteCustomOperator(
+      llvm::StringRef name, llvm::ArrayRef<TypeRef> outputTypes,
+      llvm::ArrayRef<NodeValue> inputs, std::string operatorType,
+      std::string operatorOptions);
+
   /// Create a constant node with a 1D cosine windowing function defined as:
   /// w[n] = 0.5 - 0.5 * cos(2 * pi * n / N) for n = 0 .. N - 1 where N
   /// is the window \p length. The node name will be \p name.

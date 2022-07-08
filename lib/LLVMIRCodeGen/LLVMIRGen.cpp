@@ -3621,7 +3621,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *opOut = llvm::ConstantInt::get(intTy, outNum);
 
     // Emit opInfo address as uint8_t*.
-    assert(opInfo->getType()->getSizeInBytes() >= 2 * sizeof(int64_t) &&
+    assert(opInfo->getType()->getSizeInBytes() >= 2 * opNum * sizeof(int64_t) &&
            "Not enough memory allocated for instrumentation!");
     auto *opInfoPtr = emitValueAddress(builder, opInfo);
     opInfoPtr = builder.CreateBitCast(opInfoPtr, builder.getInt8PtrTy());
@@ -3853,6 +3853,94 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::TFLiteCustomOperatorInstKind: {
+    auto *TCOI = llvm::cast<TFLiteCustomOperatorInst>(I);
+    auto *opInfo = TCOI->getOperandsInfo();
+    std::vector<Value *> outputs = TCOI->getOutputs();
+    std::vector<Value *> inputs = TCOI->getInputs();
+
+    // Target int type.
+    llvm::Type *intTy =
+        llvm::Type::getIntNTy(getLLVMContext(), getLibjitIntWidth());
+
+    // Emit operator type and options.
+    auto *operatorType = emitStringConst(builder, TCOI->getOperatorType());
+    auto *operatorOptions =
+        emitStringConst(builder, TCOI->getOperatorOptions());
+    auto *operatorOptionsSize =
+        llvm::ConstantInt::get(intTy, TCOI->getOperatorOptions().size());
+
+    // Emit number of input and output operands.
+    auto inpNum = inputs.size();
+    auto outNum = outputs.size();
+    auto opNum = inpNum + outNum;
+    auto *opInp = llvm::ConstantInt::get(intTy, inpNum);
+    auto *opOut = llvm::ConstantInt::get(intTy, outNum);
+
+    // Emit opInfo address as uint8_t*.
+    assert(opInfo->getType()->getSizeInBytes() >= 2 * opNum * sizeof(int64_t) &&
+           "Not enough memory allocated for operands information!");
+    auto *opInfoPtr = emitValueAddress(builder, opInfo);
+    opInfoPtr = builder.CreateBitCast(opInfoPtr, builder.getInt8PtrTy());
+
+    // Emit opAddr address as uint8_t** starting from offset 0.
+    auto *opAddrPtr =
+        builder.CreateGEP(opInfoPtr, llvm::ConstantInt::get(intTy, 0));
+    opAddrPtr = builder.CreateBitCast(opAddrPtr,
+                                      builder.getInt8PtrTy()->getPointerTo());
+
+    // Emit opSize address as int* starting from offset opNum * sizeof(int64_t).
+    auto *opSizePtr = builder.CreateGEP(
+        opInfoPtr, llvm::ConstantInt::get(intTy, opNum * sizeof(int64_t)));
+    opSizePtr = builder.CreateBitCast(opSizePtr, intTy->getPointerTo());
+
+    // Operands addresses and sizes.
+    std::vector<llvm::Value *> opAddrArray;
+    std::vector<llvm::Value *> opSizeArray;
+
+    // Get addresses and sizes for the input operands.
+    for (Value *inpVal : inputs) {
+      // Emit operand address as uint8_t* variable.
+      auto *opAddr = emitValueAddress(builder, inpVal);
+      opAddr = builder.CreateBitCast(opAddr, builder.getInt8PtrTy());
+      opAddrArray.push_back(opAddr);
+      // Emit operand size in bytes as int constant.
+      auto *opSize =
+          llvm::ConstantInt::get(intTy, inpVal->getType()->getSizeInBytes());
+      opSizeArray.push_back(opSize);
+    }
+    assert(opAddrArray.size() == inpNum && "Inconsistent size!");
+
+    // Get addresses and sizes for the output operands.
+    for (Value *outVal : outputs) {
+      // Emit operand address as uint8_t* variable.
+      auto *opAddr = emitValueAddress(builder, outVal);
+      opAddr = builder.CreateBitCast(opAddr, builder.getInt8PtrTy());
+      opAddrArray.push_back(opAddr);
+      // Emit operand size in bytes as int constant.
+      auto *opSize =
+          llvm::ConstantInt::get(intTy, outVal->getType()->getSizeInBytes());
+      opSizeArray.push_back(opSize);
+    }
+    assert(opAddrArray.size() == opNum && "Inconsistent size!");
+
+    // Write the addresses of the operands in the opAddr.
+    emitArrayStore(builder, opAddrArray, opAddrPtr);
+
+    // Write the sizes of the operands in opSize.
+    emitArrayStore(builder, opSizeArray, opSizePtr);
+
+    // Create callback call.
+    auto *F = getFunction("glow_tflite_custom_operator");
+    createCall(builder, F,
+               {operatorType, operatorOptions, operatorOptionsSize, opInp,
+                opOut, opAddrPtr, opSizePtr});
+
+    // Print the TFLite Custom Operator callback API.
+    printTFLiteCustomOperator_ = true;
+    break;
+  }
+
   case Kinded::Kind::AudioSpectrogramInstKind: {
     auto *ASI = llvm::cast<AudioSpectrogramInst>(I);
     auto winOutScratch = ASI->getWinOutScratch();
@@ -4024,6 +4112,34 @@ void glow_instrument_before(int id, int kind, int opInp, int opOut, uint8_t **op
 //   to see more information about the instrumented instructions.
 // -----------------------------------------------------------------------------
 void glow_instrument_after(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+
+)RAW";
+
+/// Extra bundle header file content with the TFLite custom operator callback
+/// API.
+static const char *tfliteCustomOperatorApi =
+    R"RAW(
+// -----------------------------------------------------------------------------
+// Callback function used for TFLite custom operator:
+// - This callback is called by the bundle for each TFLite Custom Operator.
+// ARGUMENTS:
+//   type      - Custom operator type (string).
+//   optsAddr  - Custom operator options (attributes) as raw buffer.
+//   optsSize  - Custom operator options size (in bytes).
+//   opInp     - Number of input operands.
+//   opOut     - Number of output operands.
+//   opAddr    - Array with addresses for all operands. The addresses are listed
+//               first for the input operands and then for the output operands.
+//               The array contains opInp + opOut addresses.
+//   opSize    - Array with sizes (in bytes) for all operands. The sizes are listed
+//               first for the input operands and then for the output operands.
+//               The array contains opInp + opOut sizes.
+// NOTES:
+// - This callback uses C linkage therefore if the callback is implemented in a
+//   .cpp file you must enclose the implementation in extern "C" {}.
+// -----------------------------------------------------------------------------
+void glow_tflite_custom_operator(const char *type, const uint8_t *optsAddr, int optsSize, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+
 )RAW";
 
 std::string LLVMIRGen::getBundleHeaderExtra() const {
@@ -4031,6 +4147,10 @@ std::string LLVMIRGen::getBundleHeaderExtra() const {
   // Print IR instrumentation callback API.
   if (printInstrumentIR_) {
     headerExtra += std::string(instrumentIRApi);
+  }
+  // Print the TFLite Custom Operator callback API.
+  if (printTFLiteCustomOperator_) {
+    headerExtra += std::string(tfliteCustomOperatorApi);
   }
   return headerExtra;
 }
