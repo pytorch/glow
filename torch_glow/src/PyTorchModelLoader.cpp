@@ -1605,7 +1605,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadSplit,
        &PyTorchModelLoader::correctTypeAlreadySet},
       {{"aten::split_with_sizes"},
-       &PyTorchModelLoader::loadSplitWithSizes,
+       &PyTorchModelLoader::loadSplit,
        &PyTorchModelLoader::correctTypeAlreadySet},
       {{"aten::linear"},
        &PyTorchModelLoader::loadLinear,
@@ -9040,61 +9040,47 @@ Error PyTorchModelLoader::loadXLEmbeddingBag4bitRowwiseOffsets(
 Error PyTorchModelLoader::loadSplit(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(
       checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
+
+  // Reading input #0: tensor to be split
   glow::NodeValue input;
-  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
+
+  // Reading input #2: axis to be split on
+  int64_t dimension;
   ASSIGN_VALUE_OR_RETURN_ERR(
       dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
-
   unsigned int dimensionPositive;
   ASSIGN_VALUE_OR_RETURN_ERR(dimensionPositive,
                              getPositiveIndex(dimension, input.dims().size()));
 
-  uint64_t chunkSize;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      chunkSize, iValToInt(getGlowIValueForValue(ptNode->input(1))));
+  // Reading input #1: either chunk size or list of chunk sizes
+  GlowIValue *splitSizeOrSections{nullptr};
+  ASSIGN_VALUE_OR_RETURN_ERR(splitSizeOrSections,
+                             getGlowIValueForValue(ptNode->input(1)));
+
+  RETURN_ERR_IF_NOT(splitSizeOrSections,
+                    "Unable to get Glow value for split_size_or_sections");
+
   std::vector<glow::NodeValue> chunks;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      chunks, loadSplitImpl(input, dimensionPositive, chunkSize));
-  size_t numChunks = chunks.size();
-  glow::GlowIValue output;
-  output.fromNodeValueList(chunks);
-  RETURN_IF_ERR(addValueMapping(ptNode->output(0), std::move(output)));
-
-  // Each output tensor in the vector should have the same correct type as the
-  // input.
-  at::ScalarType inputCorrectType;
-  ASSIGN_VALUE_OR_RETURN_ERR(inputCorrectType,
-                             getCorrectTypeMapping(ptNode->input(0)));
-  std::vector<at::ScalarType> outputCorrectTypes(numChunks, inputCorrectType);
-  RETURN_IF_ERR(setCorrectTypesMapping(ptNode->output(0), outputCorrectTypes));
-
-  return Error::success();
-}
-
-Error PyTorchModelLoader::loadSplitWithSizes(const torch::jit::Node *ptNode) {
-  RETURN_IF_ERR(
-      checkInputAndOutputSizes(ptNode->inputs(), 3, ptNode->outputs(), 1));
-  glow::NodeValue input;
-  int64_t dimension;
-  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(ptNode->input(0)));
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dimension, iValToInt(getGlowIValueForValue(ptNode->input(2))));
-
-  unsigned int dimensionPositive;
-  ASSIGN_VALUE_OR_RETURN_ERR(dimensionPositive,
-                             getPositiveIndex(dimension, input.dims().size()));
-
-  std::vector<int64_t> *signedSizes;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      signedSizes, iValToIntList(getGlowIValueForValue(ptNode->input(1))));
-  std::vector<uint64_t> sizes;
-  for (uint64_t size : *signedSizes) {
-    sizes.push_back(size);
+  if (splitSizeOrSections->isInt()) {
+    uint64_t chunkSize;
+    ASSIGN_VALUE_OR_RETURN_ERR(chunkSize, splitSizeOrSections->toInt());
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        chunks, loadSplitImpl(input, dimensionPositive, chunkSize));
+  } else if (splitSizeOrSections->isIntList()) {
+    std::vector<int64_t> *signedSizes;
+    ASSIGN_VALUE_OR_RETURN_ERR(signedSizes, splitSizeOrSections->toIntList());
+    std::vector<uint64_t> sizes;
+    for (uint64_t size : *signedSizes) {
+      sizes.push_back(size);
+    }
+    ASSIGN_VALUE_OR_RETURN_ERR(chunks,
+                               loadSplitImpl(input, dimensionPositive, sizes));
+  } else {
+    return MAKE_ERR(strFormat("Unexpected type for split_size_or_sections: %s",
+                              splitSizeOrSections->getTagString()));
   }
-  std::vector<glow::NodeValue> chunks;
-  ASSIGN_VALUE_OR_RETURN_ERR(chunks,
-                             loadSplitImpl(input, dimensionPositive, sizes));
+
   size_t numChunks = chunks.size();
   glow::GlowIValue output;
   output.fromNodeValueList(chunks);
