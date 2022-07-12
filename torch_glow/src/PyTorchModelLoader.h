@@ -446,7 +446,6 @@ private:
   loadSplitImpl(const glow::NodeValue &glowInput, const uint64_t dimension,
                 const std::vector<uint64_t> &sizes);
   Error loadSplit(const torch::jit::Node *ptNode);
-  Error loadSplitWithSizes(const torch::jit::Node *ptNode);
 
   // Load a PyTorch fb::equally_split.
   // \returns error on failure.
