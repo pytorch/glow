@@ -18,7 +18,12 @@
 
 #include "gtest/gtest.h"
 
+#include "folly/lang/Keep.h"
+
 using namespace glow;
+
+// NOLINTNEXTLINE(facebook-hte-DetailCall)
+FOLLY_KEEP Error check_return_success() { return Error::success(); }
 
 TEST(Error, BasicError) {
   auto err = MAKE_ERR("some error");

@@ -162,7 +162,6 @@ namespace glow {
 /// Forward declarations.
 namespace detail {
 class GlowError;
-class GlowErrorSuccess;
 class GlowErrorEmpty;
 class GlowErrorValue;
 template <typename T> class GlowExpected;
@@ -170,7 +169,6 @@ template <typename T> class GlowExpected;
 
 /// Type aliases to decouple Error and Expected from underlying implementation.
 using Error = detail::GlowError;
-using ErrorSuccess = detail::GlowErrorSuccess;
 using ErrorEmpty = detail::GlowErrorEmpty;
 using ErrorValue = detail::GlowErrorValue;
 template <typename T> using Expected = detail::GlowExpected<T>;
@@ -505,7 +503,7 @@ public:
   /// Create an Error not containing an ErrorValue that is signifies success
   /// instead of failure of an operation.
   /// NOTE: this Error must still be checked before being destroyed.
-  static GlowErrorSuccess success();
+  static GlowError success();
 
   /// Create an empty Error that is signifies that an operation has not yet
   /// occurred. This should only be used when another Error will be assigned to
@@ -543,15 +541,10 @@ public:
   bool isChecked_() const { return isChecked(); }
 };
 
-/// ErrorSuccess is a special Error that is used to mark the absents of an
-/// error. It shouldn't be constructed directly but instead using
-/// Error::success().
-class GlowErrorSuccess final : public GlowError {};
-
 /// See declaration in Error for details.
-inline GlowErrorSuccess GlowError::success() { return GlowErrorSuccess(); }
+inline GlowError GlowError::success() { return GlowError(); }
 
-/// ErrorSuccess is a special Error that is used to contain the future state of
+/// ErrorEmpty is a special Error that is used to contain the future state of
 /// a fallible process that hasn't yet occurred. It shouldn't be
 /// constructed directly but instead using Error::empty(). See comments on
 /// Error::empty() method for more details.
@@ -702,13 +695,11 @@ public:
   /// Construct an Expected from an Error. The error must contain an ErrorValue.
   /// Marks the Error as checked.
   GlowExpected(GlowError error) {
-    assert(error.hasErrorValue() &&
-           "Must have an ErrorValue to construct an Expected from an Error");
+    CHECK(error.hasErrorValue()) <<
+      "Must have an ErrorValue to construct an Expected from an Error";
     setErrorValue(std::move(error.takeErrorValue()), /*skipCheck*/ true);
   }
 
-  /// Disallow construction of Expected from ErrorSuccess and ErrorEmpty.
-  GlowExpected(GlowErrorSuccess) = delete;
   GlowExpected(GlowErrorEmpty) = delete;
 
   /// Move construct Expected<T> from a value of type OtherT as long as OtherT
