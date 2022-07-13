@@ -17,6 +17,7 @@
 #include "glow/Runtime/InputSanitizer.h"
 #include "glow/Flags/Flags.h"
 
+#include <folly/Conv.h>
 #include <folly/Random.h>
 #include <glog/logging.h>
 #include <llvm/Support/Casting.h>
@@ -33,12 +34,12 @@ static Error sanitizeIndices(const Tensor *indicesTensor, size_t tableHeight,
   size_t indicesLen = indices.getRealNumElements();
   // indices in [0, tableHeight)
   for (auto i = 0; i < indicesLen; i++) {
-    RETURN_ERR_IF_NOT(indices.raw(i) >= 0 && indices.raw(i) < tableHeight,
-                      "Indices sanitization failed on tensor " +
-                          tensorName.str() + ": index " +
-                          std::to_string(indices.raw(i)) + " at pos " +
-                          std::to_string(i) + " is out of range [0, " +
-                          std::to_string(tableHeight) + ")");
+    RETURN_ERR_IF_NOT(
+        indices.raw(i) >= 0 && indices.raw(i) < tableHeight,
+        folly::to<std::string>("Indices sanitization failed on tensor ",
+                               tensorName.str(), ": index ", indices.raw(i),
+                               " at pos ", i, " is out of range [0, ",
+                               tableHeight, ')'));
   }
 
   return Error::success();
@@ -53,11 +54,11 @@ static Error sanitizeLengths(const Tensor *lengthsTensor,
   size_t totalLensSum = 0;
   for (auto i = 0; i < lengths.getRealNumElements(); ++i) {
     auto length = lengths.raw(i);
-    RETURN_ERR_IF_NOT(length >= 0,
-                      "SLS lengths sanitization failed on tensor " +
-                          tensorName.str() + ": length " +
-                          std::to_string(length) + " at pos " +
-                          std::to_string(i) + " is negative");
+    RETURN_ERR_IF_NOT(
+        length >= 0,
+        folly::to<std::string>("SLS lengths sanitization failed on tensor ",
+                               tensorName.str(), ": length ", length,
+                               " at pos ", i, " is negative"));
     totalLensSum += length;
   }
 
@@ -77,19 +78,20 @@ static Error sanitizeOffsets(const Tensor *offsetsTensor,
   auto offsets = offsetsTensor->getHandle<T>();
 
   RETURN_ERR_IF_NOT(offsets.raw(0) == 0,
-                    "EBB offsets sanitization failed on tensor " +
-                        tensorName.str() + ": the first offset is not zero " +
-                        std::to_string(offsets.raw(0)));
+                    folly::to<std::string>(
+                        "EBB offsets sanitization failed on tensor ",
+                        tensorName.str(), ": the first offset is not zero ",
+                        offsets.raw(0)));
 
   bool zeroTensor = true;
   size_t offsetsLen = offsets.getRealNumElements();
   for (auto i = 0; i < offsetsLen - 1; i++) {
-    RETURN_ERR_IF_NOT(offsets.raw(i) <= offsets.raw(i + 1),
-                      "EBB offsets sanitization failed on tensor " +
-                          tensorName.str() + ": decreasing offsets " +
-                          std::to_string(offsets.raw(i)) + " and " +
-                          std::to_string(offsets.raw(i + 1)) + " at pos " +
-                          std::to_string(i));
+    RETURN_ERR_IF_NOT(
+        offsets.raw(i) <= offsets.raw(i + 1),
+        folly::to<std::string>("EBB offsets sanitization failed on tensor ",
+                               tensorName.str(), ": decreasing offsets ",
+                               offsets.raw(i), " and ", offsets.raw(i + 1),
+                               " at pos ", i));
 
     if (zeroTensor && offsets.raw(i + 1) != 0) {
       zeroTensor = false;
