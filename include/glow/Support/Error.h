@@ -464,7 +464,7 @@ public:
 protected:
 #endif
   /// Construct a new empty Error.
-  explicit GlowError() { setErrorValue(nullptr, /*skipCheck*/ true); }
+  explicit GlowError() = default;
 
 public:
   /// Construct an Error from an ErrorValue \p errorValue.
