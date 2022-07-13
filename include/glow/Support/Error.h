@@ -385,14 +385,14 @@ public:
   ErrorCode getErrorCode() const { return ec_; }
 
   GlowErrorValue(std::string message, ErrorCode ec)
-      : message_(message), ec_(ec) {}
+      : message_(std::move(message)), ec_(ec) {}
 
   GlowErrorValue(ErrorCode ec, std::string message)
-      : message_(message), ec_(ec) {}
+      : message_(std::move(message)), ec_(ec) {}
 
   GlowErrorValue(ErrorCode ec) : ec_(ec) {}
 
-  GlowErrorValue(std::string message) : message_(message) {}
+  GlowErrorValue(std::string message) : message_(std::move(message)) {}
 
 private:
   /// Convert ErrorCode values to string.
