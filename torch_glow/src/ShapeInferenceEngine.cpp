@@ -814,55 +814,22 @@ void ShapeInferenceEngine::dumpGraph(const torch::jit::Graph &graph) {
 
   // If more than one group, then we can find unsupported nodes in between
   if (fusions.size() > 1) {
-    std::unordered_set<const torch::jit::Node *> allFusionInputs;
-    for (int i = 1; i < fusions.size(); ++i) {
-      for (auto input : fusions[i]->inputs()) {
-        allFusionInputs.insert(input->node());
-      }
-    }
-
-    using NodePath = std::vector<const torch::jit::Node *>;
-
-    std::vector<NodePath> nonLoweredPaths;
-    for (int i = 0; i < fusions.size() - 1; ++i) {
-      auto currFusion = fusions[i];
-
-      std::deque<NodePath> q;
-      for (auto output : currFusion->outputs()) {
-        for (auto use : output->uses()) {
-          q.push_back({use.user});
-        }
-      }
-
-      while (q.size() > 0) {
-        auto path = std::move(q.front());
-        q.pop_front();
-
-        if (allFusionInputs.count(path.back()) > 0) {
-          nonLoweredPaths.push_back(path);
-        }
-
-        for (auto output : path.back()->outputs()) {
-          for (auto use : output->uses()) {
-            NodePath newPath{path};
-            newPath.push_back(use.user);
-            q.push_back(std::move(newPath));
-          }
+    LOG(INFO) << "Found more than one fusion group";
+    std::unordered_set<const torch::jit::Node *> allFusionOutputs;
+    for (auto f : fusions) {
+      for (auto o : f->outputs()) {
+        for (auto use : o->uses()) {
+          allFusionOutputs.insert(use.user);
         }
       }
     }
 
-    LOG(INFO) << "Got " << nonLoweredPaths.size()
-              << " non lowered paths between fusion groups";
-    for (auto path : nonLoweredPaths) {
-      std::ostringstream ss;
-      ss << "[";
-      for (auto n : path) {
-        ss << ", " << *n;
-      }
-      ss << "]";
-      LOG(INFO) << "Non lowered path: " << ss.str();
+    std::ostringstream ss;
+    for (auto n : allFusionOutputs) {
+      ss << "\n" << *n;
     }
+    LOG(INFO) << "Got " << allFusionOutputs.size()
+              << " nodes following fusion groups" << ss.str();
   }
 }
 
