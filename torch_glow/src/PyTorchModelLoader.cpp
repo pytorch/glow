@@ -8957,7 +8957,7 @@ Error PyTorchModelLoader::loadRowwiseQuantizedXLEmbeddingBagHelper(
     // Assuming hasEndOffset = true, so the output.dims[0] should be
     // offsets.dims[0] - 1, if offsets is not empty
     glow::Tensor t(
-        (is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy),
+        ElemKind::FloatTy,
         {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0,
          (is4Bit ? embeddingDim * 2 : embeddingDim) - 2 * sizeof(float)});
     t.zero();
