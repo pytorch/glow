@@ -239,12 +239,11 @@ public:
               continue;
             }
 
-            DEBUG_GLOW(llvm::outs()
-                       << "Instrumenting: " << funcName << " in kernel: "
-                       << (funcToInstrument->kernelFunc.empty()
-                               ? "any"
-                               : funcToInstrument->kernelFunc)
-                       << "\n");
+            LOG(INFO) << "Instrumenting: " << funcName << " in kernel: "
+                      << (funcToInstrument->kernelFunc.empty()
+                              ? "any"
+                              : funcToInstrument->kernelFunc.str())
+                      << "\n";
 
             // If function is in the list to be instumented and
             // custom functions before (and after specified) use them.
