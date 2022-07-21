@@ -51,7 +51,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
       continue;
     }
     auto &symb = symbolTable_[name];
-    CHECK(valueNumbers_.count(c)) << "Unexpected uncounted constant";
+    CHECK(valueNumbers_.count(c)) << "Unexpected uncounted constant: " << name;
     symb.index = valueNumbers_[c].second;
     auto addr = symb.offset;
     allocatedAddress_[c] = addr;
@@ -65,6 +65,10 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
 
   allocatePlaceholders(contiguousPlaceholders, mutableWeightVarsAllocator_,
                        symbolTable_);
+
+  DEBUG_GLOW(
+      llvm::dbgs() << "\n\nIn AllocationsInfo::allocateWeightVars: Begin "
+                      "printing all contiguousPlaceholders: \n");
   // Compute the offsets and total memory requirements for Placeholders.
   for (auto it = contiguousPlaceholders.begin();
        it != contiguousPlaceholders.end(); it++) {
@@ -74,14 +78,27 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
         << "Expected to find " << name << " in symbol table";
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
     if (allocatedAddress_.count(w)) {
+      DEBUG_GLOW(llvm::dbgs() << "Skipping symbol: " << name
+                              << ". Previous allocated address: "
+                              << allocatedAddress_[w] << "\n");
       continue;
     }
     auto &symb = symbolTable_[name];
-    CHECK(valueNumbers_.count(w)) << "Unexpected uncounted placeholder";
+    CHECK(valueNumbers_.count(w))
+        << "Unexpected uncounted placeholder: " << name << "\n";
     symb.index = valueNumbers_[w].second;
     auto addr = symb.offset;
     allocatedAddress_[w] = addr;
+
+    DEBUG_GLOW(llvm::dbgs() << "Symbol: " << name
+                            << "  allocated address: " << allocatedAddress_[w]
+                            << "  offset: " << symb.offset
+                            << "  symbol index: " << valueNumbers_[w].second
+                            << "  isInput field: " << it->isInput
+                            << "  isOutput field: " << it->isOutput << "\n");
   }
+  DEBUG_GLOW(llvm::dbgs() << "\nIn AllocationsInfo::allocateWeightVars: End "
+                             "printing all contiguousPlaceholders.\n\n");
 
   // Remember that max required memory size for each kind of weights.
   constantWeightVarsMemSize_ = constantWeightVarsAllocator_.getMaxMemoryUsage();
