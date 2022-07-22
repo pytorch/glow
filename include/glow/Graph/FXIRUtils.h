@@ -93,19 +93,6 @@ std::vector<T> toIntegerArray(const folly::dynamic &dyn,
   return vec;
 }
 
-template <class T> std::vector<T> getNodeStride(const folly::dynamic &node) {
-  if (node.find("kwargs") != node.items().end()) {
-    const auto &kwargs = getNodeKwargs(node);
-    if (kwargs.find("out_memref") != kwargs.items().end()) {
-      const auto &out_memref = kwargs["out_memref"]; // out tensor view
-      return toIntegerArray<glow::dim_t>(out_memref.at("stride").getString());
-    }
-  }
-  CHECK(node.find("stride") != node.items().end())
-      << "Neither stride nor out_memref exists in node " << node;
-  return toIntegerArray<glow::dim_t>(node.at("stride").getString());
-}
-
 /// Get the opCode of the node.
 std::string getNodeOpCode(const folly::dynamic &node);
 
@@ -118,11 +105,36 @@ std::string getNodeTarget(const folly::dynamic &node);
 /// Get the data type of the node.
 ElemKind getNodeDataType(const folly::dynamic &node);
 
+bool hasFxOutTensorView(const folly::dynamic &node);
+
+const folly::dynamic &getFxOutTensorView(const folly::dynamic &node);
+
+std::string getNodeItemAsString(const folly::dynamic &node,
+                                const char *itemName);
 std::string getNodeShapeAsString(const folly::dynamic &node);
+std::string getNodeStrideAsString(const folly::dynamic &node);
+
+template <class T>
+std::vector<T> getNodeItem(const folly::dynamic &node, const char *itemName) {
+  const std::string itemString = getNodeItemAsString(node, itemName);
+  return toIntegerArray<glow::dim_t>(itemString);
+}
 
 template <class T> std::vector<T> getNodeShape(const folly::dynamic &node) {
   const std::string shapeString = getNodeShapeAsString(node);
   return toIntegerArray<glow::dim_t>(shapeString);
+}
+
+template <class T> std::vector<T> getNodeStride(const folly::dynamic &node) {
+  const std::string strideString = getNodeStrideAsString(node);
+  return toIntegerArray<glow::dim_t>(strideString);
+}
+
+std::string getNodeOffsetsAsString(const folly::dynamic &node);
+
+template <class T> std::vector<T> getNodeOffsets(const folly::dynamic &node) {
+  const std::string offsetString = getNodeOffsetsAsString(node);
+  return toIntegerArray<glow::dim_t>(offsetString);
 }
 
 /// Checks if node's padded.
