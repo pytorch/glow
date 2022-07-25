@@ -154,3 +154,16 @@ std::string glow::getNodeShapeAsString(const folly::dynamic &node) {
       << "Neither shape nor out_memref exists in node " << node << "\n";
   return node.at("shape").getString();
 }
+
+bool glow::isInputFXNode(const folly::dynamic &node) {
+  return (node["op_code"].getString() == "placeholder" &&
+          (node.count("ph_type") == 0 ||
+           node["ph_type"].getString() == "input_ph"));
+}
+
+bool glow::isOutputFXNode(const folly::dynamic &node) {
+  return (node["op_code"].getString() == "output" ||
+          (node["op_code"].getString() == "placeholder" &&
+           (node.count("ph_type") != 0 &&
+            node["ph_type"].getString() == "output_ph")));
+}

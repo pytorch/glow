@@ -184,6 +184,9 @@ int getNodeZeroPoint(const folly::dynamic &node);
 /// Get vector of offsets for Extract operations.
 std::vector<dim_t> getOffsets(const folly::dynamic &node);
 
+bool isInputFXNode(const folly::dynamic &node);
+bool isOutputFXNode(const folly::dynamic &node);
+
 } // namespace glow
 
 #endif // GLOW_IR_FXIRUTILS_H
