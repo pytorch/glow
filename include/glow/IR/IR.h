@@ -234,7 +234,7 @@ public:
   bool isFused() const { return parentFusionGroupInstr_ != nullptr; }
 
   /// \returns parent fusionGroupInstr
-  const Instruction *getParentGroupFusionInstr() {
+  const Instruction *getParentGroupFusionInstr() const {
     return parentFusionGroupInstr_;
   }
 
