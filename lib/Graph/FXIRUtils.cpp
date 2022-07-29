@@ -131,28 +131,71 @@ Value *glow::valueForNode(
   return value;
 }
 
+bool glow::hasFxOutTensorView(const folly::dynamic &node) {
+  const auto &kwargs = getNodeKwargs(node);
+  return kwargs.find("out_memref") != kwargs.items().end();
+}
+
+const folly::dynamic &glow::getFxOutTensorView(const folly::dynamic &node) {
+  const auto &kwargs = getNodeKwargs(node);
+  CHECK(hasFxOutTensorView(node)) << "Node must have 'out_memref'\n";
+  return kwargs["out_memref"];
+}
+
 std::vector<dim_t> glow::getOffsets(const folly::dynamic &node) {
-  const auto &inputs = getNodeKwargs(node);
+  const auto &kwargs = getNodeKwargs(node);
   const std::string shape = glow::getNodeShapeAsString(node);
   auto count = std::count(shape.begin(), shape.end(), ',') + 1;
   std::vector<dim_t> offsets(count, 0);
-  auto dim = inputs["dim"].asInt();
-  auto start = inputs["start"].asInt();
+  auto dim = kwargs["dim"].asInt();
+  auto start = kwargs["start"].asInt();
   offsets[dim] = start;
   return offsets;
 }
 
+//======================================================================
 std::string glow::getNodeShapeAsString(const folly::dynamic &node) {
+  return glow::getNodeItemAsString(node, "shape");
+}
+
+//======================================================================
+std::string glow::getNodeStrideAsString(const folly::dynamic &node) {
+  return getNodeItemAsString(node, "stride");
+}
+
+//======================================================================
+// Offset is introduced with tensor views, so node must be a tensor view
+// node, not a compute node.
+//======================================================================
+std::string glow::getNodeOffsetsAsString(const folly::dynamic &node) {
+  CHECK(node.find("is_tensor_view") != node.items().end() &&
+        node["is_tensor_view"].asBool())
+      << "Node must be tensor view\n";
+  CHECK(node.find("offset") != node.items().end())
+      << "Missing field 'offset' in tensor view\n";
+  return node.at("offset").getString();
+}
+
+//======================================================================
+// Prior to introduction of tensor views (out_memref is a tensor view
+// for writing the output to an alloc), shape and stride were taken
+// from the output/destination alloc node (that a compute node writes to).
+// The two if statements handle the case with tensor views and the final
+// returns the shape from the destination node.
+//======================================================================
+std::string glow::getNodeItemAsString(const folly::dynamic &node,
+                                      const char *itemName) {
   if (node.find("kwargs") != node.items().end()) {
     const auto &kwargs = getNodeKwargs(node);
     if (kwargs.find("out_memref") != kwargs.items().end()) {
       const auto &out_memref = kwargs["out_memref"]; // out tensor view
-      return out_memref.at("shape").getString();
+      return out_memref.at(itemName).getString();
     }
   }
-  CHECK(node.find("shape") != node.items().end())
-      << "Neither shape nor out_memref exists in node " << node << "\n";
-  return node.at("shape").getString();
+  CHECK(node.find(itemName) != node.items().end())
+      << "Neither " << itemName << " nor out_memref exists in node " << node
+      << "\n";
+  return node.at(itemName).getString();
 }
 
 bool glow::isInputFXNode(const folly::dynamic &node) {

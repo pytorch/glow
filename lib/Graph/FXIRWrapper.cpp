@@ -135,4 +135,12 @@ FXIRWrapper::getFXWeightNameFromGlowConstNodeName(llvm::StringRef name) const {
   return it->second;
 }
 
+/***********************************************************************
+ * Check whether the FX node is tensor view.
+ ***********************************************************************/
+bool isFxNodeTensorView(const FXNode &node) {
+  return node.find("is_tensor_view") != node.items().end() &&
+         node["is_tensor_view"].asBool();
+}
+
 } // namespace glow

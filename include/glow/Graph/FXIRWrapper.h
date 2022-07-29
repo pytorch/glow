@@ -143,6 +143,9 @@ public:
   const FXNode &getDestinationBufferForNode(const FXNode &node) const;
 };
 
+// Check whether the FX node is tensor view.
+bool isFxNodeTensorView(const FXNode &node);
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_FXIRWRAPPER_H
