@@ -53,6 +53,20 @@ void ReproLiteLib::loadFromAFG() {
   std::stringstream buffer;
   buffer << jsonFile.rdbuf();
   serializedGraphJson_ = buffer.str();
+  jsonFile.close();
+  std::ifstream configFile(configPathOpt_.c_str());
+  std::string line;
+  while (std::getline(configFile, line)) {
+    std::vector<std::string> tokens;
+    std::stringstream tokenizer(line);
+    std::string token;
+    while (std::getline(tokenizer, token, ':')) {
+      tokens.push_back(token);
+    }
+    assert(tokens.size() == 2);
+    config_[tokens[0]] = tokens[1];
+  }
+  configFile.close();
   std::ifstream fin(weightsPathOpt_, std::ios::binary);
   std::vector<char> bytes((std::istreambuf_iterator<char>(fin)),
                           (std::istreambuf_iterator<char>()));
@@ -68,15 +82,15 @@ void ReproLiteLib::loadFromAFG() {
 void ReproLiteLib::parseCommandLine(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
-  jsonPathOpt_ = checkPath(reproPathOpt + "/graph_ir.json");
   std::cout << "repro_path flag set to '" << reproPathOpt;
+  jsonPathOpt_ = checkPath(reproPathOpt + "/graph_ir.json", true);
+  configPathOpt_ = checkPath(reproPathOpt + "/config.spec", true);
   weightsPathOpt_ = checkPath(reproPathOpt + "/weights.pt", true);
 }
 
 void ReproLiteLib::run() {
   // Create FXGlowCompileSpec.
   loadFromAFG();
-  config_["lower_to_llvm"] = "true";
   auto backend = glow::FBABackend();
   auto compiledOrErr = backend.compileFXToCompiledResults(
       folly::parseJson(serializedGraphJson_), strweights_, config_);

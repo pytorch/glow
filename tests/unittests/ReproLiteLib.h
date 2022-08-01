@@ -24,9 +24,10 @@
 
 class ReproLiteLib {
 public:
-  std::string serializedGraphJson_;
   std::string jsonPathOpt_;
+  std::string configPathOpt_;
   std::string weightsPathOpt_;
+  std::string serializedGraphJson_;
   std::map<std::string, std::string> config_;
   llvm::StringMap<const void *> strweights_;
 
