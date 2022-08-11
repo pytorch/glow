@@ -802,13 +802,23 @@ struct PReluInputs {
 };
 
 /// Indexes of aten::slice inputs.
-struct SliceInputs {
+struct SliceInputs5 {
   enum {
     input = 0,
     dim = 1,
     start = 2,
     end = 3,
     step = 4,
+  };
+};
+
+/// Indexes of aten::slice inputs.
+struct SliceInputs4 {
+  enum {
+    input = 0,
+    start = 1,
+    end = 2,
+    step = 3,
   };
 };
 
@@ -882,6 +892,21 @@ struct SizeInputs {
   enum {
     input = 0,
     dim = 1,
+  };
+};
+
+/// Indexes of aten::len inputs.
+struct LenInputs {
+  enum {
+    input = 0,
+  };
+};
+
+/// Indexes of aten::__getitem__ inputs.
+struct GetItemInputs {
+  enum {
+    input = 0,
+    index = 1,
   };
 };
 
@@ -1641,6 +1666,12 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::size"},
        &PyTorchModelLoader::loadSize,
        &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"aten::len"},
+       &PyTorchModelLoader::loadLen,
+       &PyTorchModelLoader::correctTypeAlreadySet},
+      {{"aten::__getitem__"},
+       &PyTorchModelLoader::loadGetItem,
+       &PyTorchModelLoader::correctTypeAlreadySet},
       {{"prim::ListConstruct"},
        &PyTorchModelLoader::loadListConstruct,
        &PyTorchModelLoader::correctTypeAlreadySet},
@@ -1760,7 +1791,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::getCorrectTypeFromInput<PReluInputs::input>},
       {{"aten::slice"},
        &PyTorchModelLoader::loadSlice,
-       &PyTorchModelLoader::getCorrectTypeFromInput<SliceInputs::input>},
+       &PyTorchModelLoader::correctTypeAlreadySet},
       {{"aten::softmax"},
        &PyTorchModelLoader::loadSoftMax,
        &PyTorchModelLoader::getCorrectTypeFromInput<SoftMaxInputs::input>},
@@ -3717,23 +3748,38 @@ Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  CHECK_LE(inputs.size(), 3);
 
   // TODO: extend this to allow non-constant scalars.
-  int64_t scalar;
-  ASSIGN_VALUE_OR_RETURN_ERR(scalar,
-                             iValToInt(getGlowIValueForValue(inputs[2])));
-  RETURN_ERR_IF_NOT(scalar == 1,
-                    glow::strFormat("Scalar must have value equal 1."));
+  int64_t scalar = 1;
+  if (inputs.size() == 3) {
+    ASSIGN_VALUE_OR_RETURN_ERR(scalar,
+                               iValToInt(getGlowIValueForValue(inputs[2])));
+    RETURN_ERR_IF_NOT(scalar == 1,
+                      glow::strFormat("Scalar must have value equal 1."));
+  }
 
-  std::pair<NodeValue, at::ScalarType> nodeValueAndCorrectType;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      nodeValueAndCorrectType,
-      loadArithmeticNode<glow::SubNode>("sub", inputs[0], inputs[1]));
+  if (hasGlowIValueForValue(inputs[0]) && hasGlowIValueForValue(inputs[1])) {
+    int64_t lhs, rhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(lhs,
+                               iValToInt(getGlowIValueForValue(inputs[0])));
+    ASSIGN_VALUE_OR_RETURN_ERR(rhs,
+                               iValToInt(getGlowIValueForValue(inputs[1])));
 
-  RETURN_IF_ERR(addValueMapping(outputs[0], nodeValueAndCorrectType.first));
-  RETURN_IF_ERR(
-      setCorrectTypeMapping(outputs[0], nodeValueAndCorrectType.second));
+    GlowIValue glowIVal;
+    glowIVal.fromIValue(static_cast<int>(lhs - rhs));
+    RETURN_IF_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+  } else {
+    std::pair<NodeValue, at::ScalarType> nodeValueAndCorrectType;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        nodeValueAndCorrectType,
+        loadArithmeticNode<glow::SubNode>("sub", inputs[0], inputs[1]));
+
+    RETURN_IF_ERR(addValueMapping(outputs[0], nodeValueAndCorrectType.first));
+    RETURN_IF_ERR(
+        setCorrectTypeMapping(outputs[0], nodeValueAndCorrectType.second));
+  }
   return Error::success();
 }
 
@@ -4113,6 +4159,51 @@ Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
   }
 
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+}
+
+/*
+  aten::len(Tensor self) -> int"
+*/
+Error PyTorchModelLoader::loadLen(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  std::vector<int64_t> *list;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      list, iValToIntList(getGlowIValueForValue(inputs[LenInputs::input])));
+  GlowIValue glowIVal;
+  glowIVal.fromIValue(static_cast<int>(list->size()));
+
+  RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+}
+
+Error PyTorchModelLoader::loadGetItem(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  std::vector<glow::NodeValue> *inputNodeValues;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      inputNodeValues,
+      iValToNodeValueList(getGlowIValueForValue(inputs[GetItemInputs::input])));
+  int64_t index;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      index, iValToInt(getGlowIValueForValue(inputs[GetItemInputs::index])));
+
+  const int64_t listSize = inputNodeValues->size();
+  RETURN_ERR_IF_NOT(
+      index >= 0 && index < listSize,
+      strFormat("Index %ld must be with in [0, %ld]", index, listSize));
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], inputNodeValues->at(index)));
+  std::vector<at::ScalarType> correctTypes;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      correctTypes, getCorrectTypesMapping(inputs[GetItemInputs::input]));
+
+  RETURN_IF_ERR(setCorrectTypeMapping(outputs[0], correctTypes[index]));
+
+  return Error::success();
 }
 
 Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
@@ -7392,76 +7483,115 @@ Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
+  CHECK_LE(inputs.size(), 5);
 
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      input, getGlowNodeValueForValue(inputs[SliceInputs::input]));
+  int64_t inputIdx, dimIdx, startIdx, endIdx, stepIdx;
+  if (inputs.size() == 5) {
+    inputIdx = SliceInputs5::input;
+    dimIdx = SliceInputs5::dim;
+    startIdx = SliceInputs5::start;
+    endIdx = SliceInputs5::end;
+    stepIdx = SliceInputs5::step;
+  } else {
+    inputIdx = SliceInputs4::input;
+    startIdx = SliceInputs4::start;
+    endIdx = SliceInputs4::end;
+    stepIdx = SliceInputs4::step;
+  }
 
   int64_t dim, start, end, step = 1;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dim, iValToInt(getGlowIValueForValue(inputs[SliceInputs::dim])));
-
-  if (hasGlowIValueForValue(inputs[SliceInputs::start], true)) {
+  if (inputs.size() == 5) {
     ASSIGN_VALUE_OR_RETURN_ERR(
-        start, iValToInt(getGlowIValueForValue(inputs[SliceInputs::start])));
+        dim, iValToInt(getGlowIValueForValue(inputs[dimIdx])));
+  }
+
+  if (hasGlowIValueForValue(inputs[startIdx], true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        start, iValToInt(getGlowIValueForValue(inputs[startIdx])));
   } else {
     start = 0;
   }
 
-  if (hasGlowIValueForValue(inputs[SliceInputs::end], true)) {
+  if (hasGlowIValueForValue(inputs[endIdx], true)) {
     ASSIGN_VALUE_OR_RETURN_ERR(
-        end, iValToInt(getGlowIValueForValue(inputs[SliceInputs::end])));
+        end, iValToInt(getGlowIValueForValue(inputs[endIdx])));
   } else {
     end = std::numeric_limits<int64_t>::max();
   }
 
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      step, iValToInt(getGlowIValueForValue(inputs[SliceInputs::step])));
+  ASSIGN_VALUE_OR_RETURN_ERR(step,
+                             iValToInt(getGlowIValueForValue(inputs[stepIdx])));
 
   RETURN_ERR_IF_NOT(step == 1, "loadSlice only supports step == 1");
-  glow::dim_t rank = input.dims().size();
-  std::vector<glow::dim_t> begins(rank);
-  std::vector<glow::dim_t> ends(rank);
 
-  for (glow::dim_t i = 0; i < rank; ++i) {
-    const glow::dim_t dimSize = input.dims()[i];
+  if (hasGlowNodeValueForValue(inputs[inputIdx])) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input,
+                               getGlowNodeValueForValue(inputs[inputIdx]));
 
-    // Only slice along dim
-    if (i != dim) {
-      begins[i] = 0;
-      ends[i] = dimSize;
-      continue;
+    glow::dim_t rank = input.dims().size();
+    std::vector<glow::dim_t> begins(rank);
+    std::vector<glow::dim_t> ends(rank);
+
+    for (glow::dim_t i = 0; i < rank; ++i) {
+      const glow::dim_t dimSize = input.dims()[i];
+
+      // Only slice along dim
+      if (i != dim) {
+        begins[i] = 0;
+        ends[i] = dimSize;
+        continue;
+      }
+
+      int64_t startPositive, endPositive;
+      ASSIGN_VALUE_OR_RETURN_ERR(startPositive,
+                                 getPositiveIndex(start, dimSize));
+
+      if (end < 0) {
+        ASSIGN_VALUE_OR_RETURN_ERR(endPositive, getPositiveIndex(end, dimSize));
+      } else if (end > dimSize) {
+        // Ensure that end is no bigger than dimSize, if end isn't provided then
+        // it will be set to int64 maximum.
+        endPositive = dimSize;
+      } else {
+        endPositive = end;
+      }
+
+      RETURN_ERR_IF_NOT(
+          endPositive > startPositive,
+          strFormat(
+              "End index must be greater than start index got start=%ld "
+              "end=%ld "
+              "which was translated into positive range as start=%ld end=%ld",
+              start, end, startPositive, endPositive)
+              .c_str());
+
+      begins[i] = startPositive;
+      ends[i] = endPositive;
     }
+    auto *glowNode = F_.createSlice("sliceOutput", input, begins, ends);
 
-    int64_t startPositive, endPositive;
-    ASSIGN_VALUE_OR_RETURN_ERR(startPositive, getPositiveIndex(start, dimSize));
+    RETURN_IF_ERR(addValueMapping(outputs[0], glowNode));
+    RETURN_IF_ERR(setCorrectTypeMappingSameAs(outputs[0], inputs[0]));
 
-    if (end < 0) {
-      ASSIGN_VALUE_OR_RETURN_ERR(endPositive, getPositiveIndex(end, dimSize));
-    } else if (end > dimSize) {
-      // Ensure that end is no bigger than dimSize, if end isn't provided then
-      // it will be set to int64 maximum.
-      endPositive = dimSize;
-    } else {
-      endPositive = end;
-    }
+    return Error::success();
+  } else if (hasGlowIValueForValue(inputs[inputIdx])) {
+    std::vector<int64_t> *list;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        list, iValToIntList(getGlowIValueForValue(inputs[inputIdx])));
+    GlowIValue glowIVal;
+    std::vector<int64_t> slicedList(
+        list->begin() + start,
+        list->begin() + std::min(end, static_cast<int64_t>(list->size())));
+    glowIVal.fromIntList(std::move(slicedList));
 
-    RETURN_ERR_IF_NOT(
-        endPositive > startPositive,
-        strFormat(
-            "End index must be greater than start index got start=%ld "
-            "end=%ld "
-            "which was translated into positive range as start=%ld end=%ld",
-            start, end, startPositive, endPositive)
-            .c_str());
+    RETURN_IF_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 
-    begins[i] = startPositive;
-    ends[i] = endPositive;
+    return Error::success();
+  } else {
+    return MAKE_ERR("Unexpected scalar type");
   }
-  auto *glowNode = F_.createSlice("sliceOutput", input, begins, ends);
-
-  RETURN_ERR(addValueMapping(outputs[0], glowNode));
 }
 
 /// TODO: check Dtype is float (optional value).

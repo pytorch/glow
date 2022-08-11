@@ -940,6 +940,14 @@ private:
   /// \returns error on failure.
   Error loadSize(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::len node.
+  /// \returns error on failure
+  Error loadLen(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::__getitem__ node.
+  /// \returns error on failure
+  Error loadGetItem(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch prim::ListConstruct node.
   /// \returns error on failure.
   Error loadListConstruct(const torch::jit::Node *ptNode);
