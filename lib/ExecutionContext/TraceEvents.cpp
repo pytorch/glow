@@ -31,8 +31,7 @@ void writeMetadataHelper(llvm::raw_fd_ostream &file, llvm::StringRef type,
                          int id, llvm::StringRef name) {
   file << "{\"cat\": \"__metadata\", \"ph\":\"" << TraceEvent::MetadataType
        << "\", \"ts\":0, \"pid\":0, \"tid\":" << id << ", \"name\":\""
-       << type.str() << "\", \"args\": {\"name\":\"" << name.str()
-       << "\"} },\n";
+       << type.str() << "\", \"args\": {\"name\":\"" << name.str() << "\"} }";
 }
 
 void TraceEvent::dumpTraceEvents(
@@ -61,15 +60,14 @@ void TraceEvent::dumpTraceEvents(
   for (const auto &nameMap : threadNames) {
     // Put thread name ahead of thread ID so chrome will group thread with the
     // same prefix together.
+    file << ",\n";
     writeMetadataHelper(
         file, "thread_name", nameMap.first,
         llvm::formatv("{1}: {0}", nameMap.first, nameMap.second).str());
   }
 
-  bool first{true};
   for (const auto &event : events) {
-    file << (first ? "" : ",\n");
-    first = false;
+    file << ",\n";
 
     file << "{\"name\": \"" << event.name;
     file << "\", \"cat\": \"" << traceLevelToString(event.level) << "\",";
