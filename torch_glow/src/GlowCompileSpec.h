@@ -401,6 +401,10 @@ struct FuserSettings : public JsonSerializableCustomClass {
 
 struct CompilationGroupSettings : public JsonSerializableCustomClass {
   ADD_BOOL_FIELD(convert_to_fp16, false)
+  ADD_BOOL_FIELD(clip_fp16, false)
+  ADD_BOOL_FIELD(convert_fused_to_fp16, false)
+  ADD_BOOL_FIELD(enable_convert_8bit_fused_to_fp32, false)
+  ADD_BOOL_FIELD(enable_convert_4bit_fused_to_fp32, false)
   ADD_BOOL_FIELD(skip_bias_fp32tofp16_convert, false)
   // -1 indicates use all available devices
   ADD_INT_FIELD(num_devices_to_use, -1)
@@ -410,6 +414,12 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
   Expected<folly::dynamic> toDynamicImpl() const override {
     folly::dynamic obj = folly::dynamic::object();
     obj["convert_to_fp16"] = convert_to_fp16;
+    obj["clip_fp16"] = clip_fp16;
+    obj["convert_fused_to_fp16"] = convert_fused_to_fp16;
+    obj["enable_convert_8bit_fused_to_fp32"] =
+        enable_convert_8bit_fused_to_fp32;
+    obj["enable_convert_4bit_fused_to_fp32"] =
+        enable_convert_4bit_fused_to_fp32;
     obj["skip_bias_fp32tofp16_convert"] = skip_bias_fp32tofp16_convert;
     obj["num_devices_to_use"] = num_devices_to_use;
     obj["replication_count"] = replication_count;
@@ -427,6 +437,27 @@ struct CompilationGroupSettings : public JsonSerializableCustomClass {
     if (dyn.count("convert_to_fp16")) {
       ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, convert_to_fp16,
                                                "convert_to_fp16");
+    }
+
+    if (dyn.count("clip_fp16")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, clip_fp16, "clip_fp16");
+    }
+
+    if (dyn.count("convert_fused_to_fp16")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(dyn, convert_fused_to_fp16,
+                                               "convert_fused_to_fp16");
+    }
+
+    if (dyn.count("enable_convert_8bit_fused_to_fp32")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, enable_convert_8bit_fused_to_fp32,
+          "enable_convert_8bit_fused_to_fp32");
+    }
+
+    if (dyn.count("enable_convert_4bit_fused_to_fp32")) {
+      ASSIGN_BOOL_FROM_DYN_FIELD_OR_RETURN_ERR(
+          dyn, enable_convert_4bit_fused_to_fp32,
+          "enable_convert_4bit_fused_to_fp32");
     }
 
     if (dyn.count("skip_bias_fp32tofp16_convert")) {

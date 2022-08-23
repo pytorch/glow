@@ -583,6 +583,12 @@ Error applyCompilationGroupSettingsToPyTorchLoaderSettings(
   settings.replicationCount = newSettings.replication_count;
   settings.backendSpecificOpts = newSettings.backend_specific_opts;
   settings.convertToFP16 = newSettings.convert_to_fp16;
+  settings.clipFP16 = newSettings.clip_fp16;
+  settings.convertFusedToFP16 = newSettings.convert_fused_to_fp16;
+  settings.convert8BitFusedToFP32 =
+      newSettings.enable_convert_8bit_fused_to_fp32;
+  settings.convert4BitFusedToFP32 =
+      newSettings.enable_convert_4bit_fused_to_fp32;
 
   // Ensure override flags are honored
   RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));

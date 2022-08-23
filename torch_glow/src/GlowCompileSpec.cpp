@@ -97,6 +97,16 @@ void registerPyTorchGlowCustomClasses() {
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, convert_to_fp16);
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, clip_fp16);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, convert_fused_to_fp16);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings,
+                       enable_convert_8bit_fused_to_fp32);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings,
+                       enable_convert_4bit_fused_to_fp32);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, skip_bias_fp32tofp16_convert);
   ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
                        CompilationGroupSettings, num_devices_to_use);
