@@ -92,6 +92,7 @@ void ReproLiteLib::run() {
   // Create FXGlowCompileSpec.
   loadFromAFG();
   auto backend = glow::FBABackend();
-  auto compiledOrErr = backend.compileFXToCompiledResults(
-      folly::parseJson(serializedGraphJson_), strweights_, config_);
+
+  EXIT_ON_ERR(backend.compileFXToCompiledResults(
+      folly::parseJson(serializedGraphJson_), strweights_, config_));
 }
