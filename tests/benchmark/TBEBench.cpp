@@ -6,11 +6,13 @@
 #include "glow/Graph/Nodes.h"
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <future>
 #include <random>
 #include <string>
+#include <torch/torch.h>
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -19,7 +21,8 @@
 
 using namespace glow;
 
-#define DEVICE_ID 16
+#define DATA_FILE 16
+#define DEVICE_ID (DATA_FILE + 1)
 
 /*
  * This class implements a TableBatchedEmbedding microbenchmark. In this
@@ -49,6 +52,7 @@ struct TBEParam {
   dim_t numAsyncLaunches_;
   std::string backendStr_;
   std::string devId_;
+  std::string data_file;
   dim_t numIndicesPerBatchMin_;
   dim_t numIndicesPerBatchMax_;
   dim_t numIndicesPerBatchPad_;
@@ -69,15 +73,50 @@ class TBEBench : public Benchmark {
   TBEParam param;
   PlaceholderBindings &bindings_;
 
+  bool extern_data;
+  torch::Tensor idx_tensor;
+  torch::Tensor off_tensor;
+  dim_t numTables;
+  dim_t batchSize;
+
 public:
-  TBEBench(TBEParam param_)
-      : param(param_), bindings_(*context_.getPlaceholderBindings()) {}
+  explicit TBEBench(TBEParam param_)
+      : param(param_), bindings_(*context_.getPlaceholderBindings()) {
+    if (param.data_file != "") {
+      extern_data = true;
+      std::cout << "Loading data from " << param.data_file << std::endl;
+
+      std::ifstream fin(param.data_file);
+      std::vector<char> data;
+
+      fin >> std::noskipws;
+      data.insert(data.begin(), std::istreambuf_iterator<char>(fin),
+                  std::istreambuf_iterator<char>());
+      // For the format of the data file, please refer to
+      // https://fburl.com/code/y8b9yyj0
+      torch::IValue ivalue = torch::pickle_load(data);
+      auto tensors = ivalue.toList();
+      idx_tensor = tensors.get(0).toTensor();
+      off_tensor = tensors.get(1).toTensor();
+      torch::Tensor len_tensor = tensors.get(2).toTensor();
+
+      numTables = len_tensor.size(0);
+      batchSize = len_tensor.size(1);
+
+      std::cout << "Number of tables = " << numTables
+                << ", Batch size = " << batchSize << std::endl;
+    } else {
+      extern_data = false;
+      numTables = param.numTables_;
+      batchSize = param.batchSize_;
+    }
+  }
 
   inline void addTBENode(const std::unique_ptr<Module> &mod, Function *fn,
                          const TBEParam &param) {
-
     Tensor dataConstantTensor;
     int64_t numBytePerRow = param.numElementsPerRow_;
+
     if (param.fusedDtype_ == ElemKind::UInt4FusedFP16QTy) {
       // For 4bit tables the number of bytes should be halved (rounded up).
       numBytePerRow = (numBytePerRow + 1) / 2;
@@ -101,7 +140,7 @@ public:
     Constant *dataConstant = mod->createConstant("Data", dataConstantTensor);
 
     const dim_t maxNumIndicesWeights =
-        param.numIndicesPerBatchPad_ * param.batchSize_ * param.numTables_;
+        param.numIndicesPerBatchPad_ * batchSize * numTables;
 
     for (size_t layer = 0; layer < param.numTBENodes_; layer++) {
 
@@ -123,41 +162,41 @@ public:
 
       // Create dimOffset
       auto *dimOffset =
-          mod->createPlaceholder(ElemKind::Int32ITy, {param.numTables_ + 1},
+          mod->createPlaceholder(ElemKind::Int32ITy, {numTables + 1},
                                  "dimOffset_" + std::to_string(layer), false);
-      Tensor dimOffsetVal(ElemKind::Int32ITy, {param.numTables_ + 1});
-      for (int i = 0; i < param.numTables_ + 1; i++) {
+      Tensor dimOffsetVal(ElemKind::Int32ITy, {numTables + 1});
+      for (int i = 0; i < numTables + 1; i++) {
         dimOffsetVal.getHandle<int32_t>().raw(i) = i * param.numElementsPerRow_;
       }
 
       bindings_.insert(dimOffset, std::move(dimOffsetVal));
 
       // Create weightOffsets
-      Tensor weightsOffsetsReal(ElemKind::Int32ITy, {param.numTables_ + 1});
+      Tensor weightsOffsetsReal(ElemKind::Int32ITy, {numTables + 1});
 
       auto weightsOffsets = mod->createPlaceholder(
-          ElemKind::Int32ITy, {param.numTables_ + 1}, "weightsOffsets", false);
-      for (int i = 0; i < param.numTables_ + 1; i++) {
+          ElemKind::Int32ITy, {numTables + 1}, "weightsOffsets", false);
+      for (int i = 0; i < numTables + 1; i++) {
         weightsOffsetsReal.getHandle<int32_t>().raw(i) =
             i * param.numElementsPerRow_;
       }
       bindings_.insert(weightsOffsets, std::move(weightsOffsetsReal));
 
       // Create weightsTysTensorReal
-      Tensor weightsTysTensorReal(ElemKind::UInt8ITy, {param.numTables_});
+      Tensor weightsTysTensorReal(ElemKind::UInt8ITy, {numTables});
       auto *weightsTysTensor =
-          mod->createPlaceholder(ElemKind::UInt8ITy, {param.numTables_},
+          mod->createPlaceholder(ElemKind::UInt8ITy, {numTables},
                                  "weightsTys_" + std::to_string(layer), false);
       if (param.fusedDtype_ == ElemKind::UInt4FusedFP16QTy) {
-        for (int i = 0; i < param.numTables_; i++) {
+        for (int i = 0; i < numTables; i++) {
           weightsTysTensorReal.getHandle<uint8_t>().raw(i) = 3; // EB_INT4 = 3
         }
       } else if (param.fusedDtype_ == ElemKind::UInt8FusedQTy) {
-        for (int i = 0; i < param.numTables_; i++) {
+        for (int i = 0; i < numTables; i++) {
           weightsTysTensorReal.getHandle<uint8_t>().raw(i) = 2; // EB_INT8 = 2
         }
       } else { // Float16Ty
-        for (int i = 0; i < param.numTables_; i++) {
+        for (int i = 0; i < numTables; i++) {
           weightsTysTensorReal.getHandle<uint8_t>().raw(i) =
               1; // EB_FLOAT16 = 1
         }
@@ -165,51 +204,76 @@ public:
       bindings_.insert(weightsTysTensor, std::move(weightsTysTensorReal));
 
       // Create weightsPlacement: only a placeholder
-      Tensor weightsPlacementReal(ElemKind::Int32QTy, {param.numTables_});
+      Tensor weightsPlacementReal(ElemKind::Int32QTy, {numTables});
       auto weightsPlacement = mod->createPlaceholder(
-          ElemKind::Int32QTy, {param.numTables_}, "weightsPlacement", false);
+          ElemKind::Int32QTy, {numTables}, "weightsPlacement", false);
       bindings_.insert(weightsPlacement, std::move(weightsPlacementReal));
 
       // Create lengths and offsets
       // lengths are used to populate offsets values
-      auto *lengths = mod->createPlaceholder(
-          ElemKind::Int32ITy, {param.numTables_ * param.batchSize_},
-          "lengths" + std::to_string(layer),
-          /* isTrainable */ false);
+      auto *lengths =
+          mod->createPlaceholder(ElemKind::Int32ITy, {numTables * batchSize},
+                                 "lengths" + std::to_string(layer),
+                                 /* isTrainable */ false);
       auto *offsets = mod->createPlaceholder(
-          ElemKind::Int32ITy, {param.numTables_ * param.batchSize_ + 1},
-          "offsets", /* isTrainable */ false);
+          ElemKind::Int32ITy, {numTables * batchSize + 1}, "offsets",
+          /* isTrainable */ false);
 
       auto lengthsHandle = bindings_.allocate(lengths)->getHandle<int32_t>();
       auto offsetsHandle = bindings_.allocate(offsets)->getHandle<int32_t>();
 
-      // Generate lengths across a uniform distribution.
-      lengthsHandle.randomize(param.numIndicesPerBatchMin_,
-                              param.numIndicesPerBatchMax_, mod->getPRNG());
       dim_t lengthsSum = 0;
-      for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
-        auto &nextLength = lengthsHandle.raw(j);
-        if (lengthsSum == maxNumIndicesWeights) {
-          // If we have maxed out the maximum allowed indices then zero out the
-          // rest of the lengths.
-          nextLength = 0;
-          continue;
-        } else if (lengthsSum + nextLength > maxNumIndicesWeights) {
-          // If the next length will equal or overflow the maximum allowed
-          // indices then fill it up totally.
-          nextLength = maxNumIndicesWeights - lengthsSum;
+      if (extern_data) {
+        int32_t cur, pre, base = 0;
+
+        for (size_t j = 0, e = offsetsHandle.size(); j < e; j++) {
+          cur = off_tensor[j].item<int>();
+          if (j % batchSize == 0) {
+            base = cur;
+          }
+          offsetsHandle.raw(j) = cur - base;
+          if (j > 0) {
+            lengthsHandle.raw(j) = cur - pre;
+          }
+          pre = cur;
         }
-        offsetsHandle.raw(j) = lengthsSum;
-        lengthsSum += nextLength;
-        totalNumLengths += 1;
+
+        lengthsSum = pre;
+      } else {
+        // Generate lengths across a uniform distribution.
+        lengthsHandle.randomize(param.numIndicesPerBatchMin_,
+                                param.numIndicesPerBatchMax_, mod->getPRNG());
+        for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
+          auto &nextLength = lengthsHandle.raw(j);
+          if (lengthsSum == maxNumIndicesWeights) {
+            // If we have maxed out the maximum allowed indices then zero out
+            // the rest of the lengths.
+            nextLength = 0;
+            continue;
+          } else if (lengthsSum + nextLength > maxNumIndicesWeights) {
+            // If the next length will equal or overflow the maximum allowed
+            // indices then fill it up totally.
+            nextLength = maxNumIndicesWeights - lengthsSum;
+          }
+          offsetsHandle.raw(j) = lengthsSum;
+          lengthsSum += nextLength;
+          totalNumLengths += 1;
+        }
+        // totalLengthsSum += lengthsSum;
+        offsetsHandle.raw(lengthsHandle.size()) = lengthsSum;
       }
-      // totalLengthsSum += lengthsSum;
-      offsetsHandle.raw(lengthsHandle.size()) = lengthsSum;
 
       // Create and sort indices
       Tensor indicesReal(ElemKind::Int64ITy, {lengthsSum});
-      indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries_,
-                                                 mod->getPRNG());
+
+      if (extern_data) {
+        for (size_t j = 0; j < lengthsSum; j++) {
+          indicesReal.getHandle<int64_t>().raw(j) = idx_tensor[j].item<int>();
+        }
+      } else {
+        indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries_,
+                                                   mod->getPRNG());
+      }
       // Sort each segment
       if (param.isSorted_) {
         auto *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
@@ -219,6 +283,7 @@ public:
           indicesRealPtr += curLength;
         }
       }
+
       // Create indices
       auto *indices =
           mod->createPlaceholder(ElemKind::Int64ITy, {maxNumIndicesWeights},
@@ -293,7 +358,7 @@ public:
 
   double gbytes() const {
     return 2.0 * param.numIndicesPerBatchPad_ * param.numElementsPerRow_ *
-           param.numTables_ / 1e9;
+           this->numTables / 1e9;
   }
 
 }; // benchmark
@@ -378,12 +443,21 @@ inline TBEParam parseArgs(int argc, char *argv[]) {
     llvm_unreachable("Invalid addClipStr");
   }
   // param.convertFusedToFP32 = false;
+
+  if (argc > DATA_FILE) {
+    printf("data_file %s\n", argv[DATA_FILE]);
+    param.data_file = std::string(argv[DATA_FILE]);
+  } else {
+    param.data_file = std::string("");
+  }
+
   if (argc > DEVICE_ID) {
     printf("devId %s\n", argv[DEVICE_ID]);
     param.devId_ = std::string(argv[DEVICE_ID]);
   } else {
     param.devId_ = std::string("");
   }
+
   printf("\n\n");
   return param;
 }
@@ -404,7 +478,8 @@ int main(int argc, char *argv[]) {
          "addClipStr(\"True\"|\"False\")\nQuantized only options: "
          "quantizationDtypeStr(\"Int8\"|\"Int4\") "
          "useFP16AccumulationStr(\"True\"|\"False\") \n"
-         "Optional: dev_id(Int)\n");
+         "Optional: dev_id(Int)\n"
+         "Optional: data_file(Int)\n");
   printf("\n");
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
