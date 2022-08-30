@@ -136,7 +136,7 @@ public:
     }
     dataConstantTensor = Tensor(
         /*param.fusedDtype_*/ ElemKind::Int8QTy,
-        {param.numTableEntries_, numTotalColumns}, 1.0, 0);
+        {param.numTableEntries_ * numTotalColumns * param.numTables_}, 1.0, 0);
     Constant *dataConstant = mod->createConstant("Data", dataConstantTensor);
 
     const dim_t maxNumIndicesWeights =
