@@ -53,6 +53,7 @@ bool SkipProvisioning = false;
 bool DisableLayoutVerifying = false;
 bool DisableFreeCompilationResource = false;
 bool SinkTanhBelowConcat = false;
+bool useInferencePerspectiveTrace = false;
 
 // FP16 Constants
 bool ConvertToFP16 = false;
@@ -830,6 +831,16 @@ DEFINE_bool(glow_disable_int64_constant_to_int32_convert,
 DEFINE_validator(glow_disable_int64_constant_to_int32_convert,
                  [](const char *, bool val) {
                    glow::flags::DisableInt64ConstantToInt32Convert = val;
+                   return true;
+                 });
+
+DEFINE_bool(glow_use_inference_perspective_trace,
+            glow::flags::useInferencePerspectiveTrace,
+            "Generate the Chrome trace from the inference request perspective "
+            "instead of thread perspective");
+DEFINE_validator(glow_use_inference_perspective_trace,
+                 [](const char *, bool val) {
+                   glow::flags::useInferencePerspectiveTrace = val;
                    return true;
                  });
 

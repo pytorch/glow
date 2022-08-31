@@ -755,9 +755,10 @@ int run() {
       auto &result = results.back();
 
       threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
-                      &mergedTraceContext, &hostManager, &result, &cv, &mutex,
-                      numTotalInferences, &numFinishedInferences,
-                      runAccuracyChecks, enableGlowTrace]() {
+                      numInferencesIssued, &mergedTraceContext, &hostManager,
+                      &result, &cv, &mutex, numTotalInferences,
+                      &numFinishedInferences, runAccuracyChecks,
+                      enableGlowTrace]() {
         // Setup the inputs.
         auto ctx = glow::make_unique<ExecutionContext>();
 
@@ -766,10 +767,22 @@ int run() {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
-          traceContext->setThreadName("Request Thread");
+          if (glow::flags::useInferencePerspectiveTrace) {
+            traceContext->setThreadName(numInferencesIssued,
+                                        "Inference Request");
+            traceContext->setRequestID(numInferencesIssued);
+          } else {
+            traceContext->setThreadName("Request Thread");
+          }
         }
-        TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
-                          "Dispatch to prep input and dispatch");
+        auto eventTag = threads::getThreadId();
+        if (enableGlowTrace && glow::flags::useInferencePerspectiveTrace) {
+          eventTag = traceContext->getRequestID();
+        }
+        TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
+                              "Inference request", eventTag);
+        TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
+                              "Dispatch to prep input and dispatch", eventTag);
 
         // Set up input
         auto &bindings = *ctx->getPlaceholderBindings();
@@ -785,7 +798,8 @@ int run() {
         std::promise<void> promise;
         auto future = promise.get_future();
 
-        TRACE_EVENT_SCOPE_END();
+        TRACE_EVENT_TAG_END(traceContext, TraceLevel::RUNTIME,
+                            "Dispatch to prep input and dispatch", eventTag);
 
         hostManager->runNetwork(
             "test", std::move(ctx),

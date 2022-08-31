@@ -172,6 +172,9 @@ class TraceContext {
   /// Lock around traceEvents_.
   std::mutex lock_;
 
+  /// Inference request ID to use in viewing trace from requests perspective
+  int requestID_;
+
 public:
   TraceContext(int level) : traceLevel_(level) {}
 
@@ -221,6 +224,10 @@ public:
   /// Sets the human readable \p name for the current thread (by
   /// threads::getThreadId()).
   void setThreadName(llvm::StringRef name);
+
+  void setRequestID(int requestID_);
+
+  int getRequestID() const { return requestID_; }
 
   /// \returns the list of human readable thread names.
   std::map<int, std::string> &getThreadNames() { return threadNames_; }
@@ -280,6 +287,24 @@ public:
     ctx->logTraceEvent(name, level, type, ts, {}, threads::getThreadId(), id); \
   }
 
+/// Logs a new TraceEvent with the provided type. The tag can be either the
+/// thread ID or the request ID. All events with the same tag will appear in the
+/// same row of the Chrome trace.
+#define TRACE_EVENT_LOG_TAG(ctx, level, name, type, tag)                       \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, level, type, {}, tag);                            \
+  }
+
+#define TRACE_EVENT_TAG_BEGIN(ctx, level, name, tag)                           \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, level, TraceEvent::BeginType, {}, tag);           \
+  }
+
+#define TRACE_EVENT_TAG_END(ctx, level, name, tag)                             \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, level, TraceEvent::EndType, {}, tag);             \
+  }
+
 /// Create TraceEvent, don't log it
 #define TRACE_EVENT_CREATE(variable, level, name, type, id)                    \
   TraceEvent variable(name, level, TraceEvent::now(), type,                    \
@@ -296,10 +321,20 @@ public:
 #define TRACE_EVENT_SCOPE(ctx, level, name)                                    \
   ScopedTraceBlock __event__(ctx, level, name);
 
+/// Logs a new TraceEvent which begins and ends in the current scope block and
+/// has a custom tag (thread ID or request ID).
+#define TRACE_EVENT_SCOPE_TAG(ctx, level, name, tag)                           \
+  ScopedTraceBlock __event__(ctx, level, name, tag);
+
 /// Logs a new scoped TraceEvent with the provided name, allowing multiple
 /// within the same scope.
 #define TRACE_EVENT_SCOPE_NAMED(ctx, level, name, objName)                     \
   ScopedTraceBlock objName(ctx, level, name);
+
+/// Logs a new scoped TraceEvent with the provided name and tag (thread ID or
+/// request ID), allowing multiple within the same scope.
+#define TRACE_EVENT_SCOPE_TAG_NAMED(ctx, level, name, tag, objName)            \
+  ScopedTraceBlock objName(ctx, level, name, tag);
 
 /// End a scoped TraceEvent before its scope exits.
 #define TRACE_EVENT_SCOPE_END() __event__.end();
@@ -333,9 +368,19 @@ class ScopedTraceBlock {
   /// it twice.
   bool end_{false};
 
+  /// Request ID for this event. All Events on the same request ID will be shown
+  /// on the same row of the trace.
+  int requestID_;
+
+  /// Whether Request ID is used to group the events, insteand of thread ID.
+  bool requestIDBasedGrouping_{false};
+
 public:
   ScopedTraceBlock(TraceContext *context, TraceLevel level,
                    llvm::StringRef name);
+
+  ScopedTraceBlock(TraceContext *context, TraceLevel level,
+                   llvm::StringRef name, int tag);
 
   ScopedTraceBlock(ExecutionContext *context, TraceLevel level,
                    llvm::StringRef name);
