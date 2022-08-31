@@ -63,7 +63,7 @@ void TraceEvent::dumpTraceEvents(
     file << ",\n";
     writeMetadataHelper(
         file, "thread_name", nameMap.first,
-        llvm::formatv("{1}: {0}", nameMap.first, nameMap.second).str());
+        llvm::formatv("{1}: {0,7}", nameMap.first, nameMap.second).str());
   }
 
   for (const auto &event : events) {
@@ -191,6 +191,7 @@ void TraceContext::setThreadName(int tid, llvm::StringRef name) {
 void TraceContext::setThreadName(llvm::StringRef name) {
   setThreadName(threads::getThreadId(), name);
 }
+void TraceContext::setRequestID(int requestID) { requestID_ = requestID; }
 
 void TraceContext::dump(llvm::StringRef filename,
                         const std::string &processName) {
@@ -228,6 +229,17 @@ ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, TraceLevel level,
   std::atomic_signal_fence(std::memory_order_seq_cst);
 }
 
+ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, TraceLevel level,
+                                   llvm::StringRef name, int tag)
+    : context_(context), level_(level), name_(name), requestID_(tag),
+      requestIDBasedGrouping_(true) {
+  startTimestamp_ = TraceEvent::now();
+
+  // A local memory fence to prevent the compiler reordering instructions to
+  // before taking the start timestamp.
+  std::atomic_signal_fence(std::memory_order_seq_cst);
+}
+
 ScopedTraceBlock::ScopedTraceBlock(ExecutionContext *context, TraceLevel level,
                                    llvm::StringRef name)
     : ScopedTraceBlock(context ? context->getTraceContext() : nullptr, level,
@@ -247,8 +259,13 @@ void ScopedTraceBlock::end() {
   std::atomic_signal_fence(std::memory_order_seq_cst);
 
   if (!end_ && context_) {
-    context_->logCompleteTraceEvent(name_, level_, startTimestamp_,
-                                    std::move(args_));
+    if (requestIDBasedGrouping_) {
+      context_->logCompleteTraceEvent(name_, level_, startTimestamp_,
+                                      std::move(args_), requestID_);
+    } else {
+      context_->logCompleteTraceEvent(name_, level_, startTimestamp_,
+                                      std::move(args_));
+    }
   }
   end_ = true;
 }

@@ -42,6 +42,7 @@ extern bool SkipProvisioning;
 extern bool DisableLayoutVerifying;
 extern bool DisableFreeCompilationResource;
 extern bool SinkTanhBelowConcat;
+extern bool useInferencePerspectiveTrace;
 
 // FP16 Constants
 extern bool ConvertToFP16;

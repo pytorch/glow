@@ -959,8 +959,13 @@ HostManager::runNetwork(llvm::StringRef networkName,
                         ResultCBTy callback, uint64_t priority) {
   DCHECK(callback != nullptr);
 
-  TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
-                          "HostManager::runNetwork", traceBlock);
+  auto *traceContext = context->getTraceContext();
+  size_t eventTag = threads::getThreadId();
+  if (glow::flags::useInferencePerspectiveTrace) {
+    eventTag = context->getTraceContext()->getRequestID();
+  }
+  TRACE_EVENT_SCOPE_TAG_NAMED(traceContext, TraceLevel::RUNTIME,
+                              "HostManager::runNetwork", eventTag, traceBlock);
   auto currentRun = totalRequestCount_++;
   traceBlock.addArg("glowRequestId", llvm::formatv("{0}", currentRun).str());
   uint64_t requestReceived = TraceEvent::now();
@@ -1009,9 +1014,13 @@ HostManager::runNetwork(llvm::StringRef networkName,
     InferRequest queuedRequest(networkName.str(), std::move(context), callback,
                                priority, currentRun, requestReceived);
     {
+      TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
+                            "inferQueueLock (push)", eventTag);
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
-      TRACE_EVENT_SCOPE_END_NAMED(traceBlock);
+      TRACE_EVENT_TAG_END(traceContext, TraceLevel::RUNTIME,
+                          "inferQueueLock (push)", eventTag);
       inferQueue_.push(std::move(queuedRequest));
+      TRACE_EVENT_SCOPE_END_NAMED(traceBlock);
     }
   }
 

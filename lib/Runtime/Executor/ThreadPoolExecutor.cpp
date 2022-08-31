@@ -17,6 +17,7 @@
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/ErrorReporter.h"
 
 #include <queue>
@@ -83,12 +84,18 @@ void ThreadPoolExecutor::run(const DAGNode *root,
                              RunIdentifierTy runId, ResultCBTy cb) {
   DCHECK(cb != nullptr);
 
-  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
-                    "ThreadPoolExecutor::run");
+  size_t eventTag = threads::getThreadId();
+  if (glow::flags::useInferencePerspectiveTrace) {
+    eventTag = context->getTraceContext()->getRequestID();
+  }
+  auto *traceContext = context->getTraceContext();
 
+  TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
+                        "ThreadPoolExecutor::run", eventTag);
   if (context->getTraceContext()) {
     auto tid = threads::getThreadId();
-    if (!context->getTraceContext()->getThreadNames().count(tid)) {
+    if (!context->getTraceContext()->getThreadNames().count(tid) &
+        !glow::flags::useInferencePerspectiveTrace) {
       context->getTraceContext()->setThreadName(tid, "ThreadPoolExecutor");
     }
   }
@@ -116,22 +123,21 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   // without the callback for that node deleting the execution state.
   inflightBarrier_.increment(numChildren);
 
-  auto *traceContext = context->getTraceContext();
-
   // Get and bind state.
   auto currentState = states_.rlock()->at(root)->getNextNetworkExecutionState();
-  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,
-                    "bind network execution state");
-  currentState->bind(std::move(context), std::move(cb), runId);
-  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
-                  "bind network execution state");
+  TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
+                        "bind network execution state", eventTag);
 
+  currentState->bind(std::move(context), std::move(cb), runId);
+  TRACE_EVENT_TAG_END(traceContext, TraceLevel::RUNTIME,
+                      "bind network execution state", eventTag);
   currentState->incrementInflightNodes(numChildren);
 
   // End the trace block before calling executeDAGNode() which can trigger the
   // result cb. Once the result cb is called, it's no longer safe to access the
   // trace context.
-  TRACE_EVENT_SCOPE_END();
+  TRACE_EVENT_TAG_END(traceContext, TraceLevel::RUNTIME,
+                      "ThreadPoolExecutor::run", eventTag);
   for (auto const &node : root->children) {
     // Run with cached state
     executeDAGNode(currentState, node);
@@ -149,8 +155,16 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
                         .str();
   }
 
-  TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
-                    TraceLevel::RUNTIME, traceScopeStr);
+  size_t eventTag = threads::getThreadId();
+  if (glow::flags::useInferencePerspectiveTrace) {
+    eventTag = executionState->getRawResultContextPtr()
+                   ->getTraceContext()
+                   ->getRequestID();
+  }
+
+  TRACE_EVENT_SCOPE_TAG(
+      executionState->getRawResultContextPtr()->getTraceContext(),
+      TraceLevel::RUNTIME, traceScopeStr, eventTag);
 
   if (executionState->getErrorContainer().containsErr()) {
     // Mark the node as no longer executing.
@@ -162,7 +176,9 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   // Get the PlaceholderBindings containing all of the inputs for the node.
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);
-
+  if (glow::flags::useInferencePerspectiveTrace) {
+    nodeCtx->getTraceContext()->setRequestID(eventTag);
+  }
   // Trace child node creation (to be able to identify function execution
   // origin).
   std::string traceNodeChildCreateStr;
@@ -171,8 +187,9 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
         "ThreadPoolExecutor::executeDAGNode child node {0:x}", nodeCtx.get());
   }
 
-  TRACE_EVENT_BEGIN(executionState->getRawResultContextPtr()->getTraceContext(),
-                    TraceLevel::RUNTIME, traceNodeChildCreateStr);
+  TRACE_EVENT_TAG_BEGIN(
+      executionState->getRawResultContextPtr()->getTraceContext(),
+      TraceLevel::RUNTIME, traceNodeChildCreateStr, eventTag);
   // Get the DeviceManager that can run the node.
   auto currentDevice = node->getNextDevice();
   auto deviceManagerIt = deviceManagers_.find(currentDevice);
@@ -195,8 +212,9 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   // End the trace block before calling deviceManager->runFunction which can
   // trigger the result cb in a different thread. Once the result cb is called,
   // it's no longer safe to access the trace context.
-  TRACE_EVENT_END(executionState->getRawResultContextPtr()->getTraceContext(),
-                  TraceLevel::RUNTIME, traceNodeChildCreateStr);
+  TRACE_EVENT_TAG_END(
+      executionState->getRawResultContextPtr()->getTraceContext(),
+      TraceLevel::RUNTIME, traceNodeChildCreateStr, eventTag);
   TRACE_EVENT_SCOPE_END();
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
@@ -204,19 +222,22 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
       [this, executionState, currentDevice,
        node](RunIdentifierTy id, Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {
-        TRACE_EVENT_LOG_ID(resultCtx->getTraceContext(), TraceLevel::REQUEST,
-                           "handle result queuing", TraceEvent::AsyncBeginType,
-                           TraceEvent::now(), id);
+        if (!glow::flags::useInferencePerspectiveTrace) {
+          TRACE_EVENT_LOG_ID(resultCtx->getTraceContext(), TraceLevel::REQUEST,
+                             "handle result queuing",
+                             TraceEvent::AsyncBeginType, TraceEvent::now(), id);
+        }
 
         // Immediately move the handling of the result onto this run's executor
         // to avoid doing work on the DeviceManager thread.
         threadPool_.add([this, executionState, node, err = std::move(err),
                          currentDevice, id,
                          ctx = std::move(resultCtx)]() mutable {
-          TRACE_EVENT_LOG_ID(ctx->getTraceContext(), TraceLevel::REQUEST,
-                             "handle result queuing", TraceEvent::AsyncEndType,
-                             TraceEvent::now(), id);
-
+          if (!glow::flags::useInferencePerspectiveTrace) {
+            TRACE_EVENT_LOG_ID(ctx->getTraceContext(), TraceLevel::REQUEST,
+                               "handle result queuing",
+                               TraceEvent::AsyncEndType, TraceEvent::now(), id);
+          }
           node->markFinished(currentDevice);
           this->handleDeviceManagerResult(executionState, std::move(err),
                                           std::move(ctx), node);
@@ -228,9 +249,14 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     NetworkExecutionState *executionState, Error err,
     std::unique_ptr<ExecutionContext> ctx, const DAGNode *node) {
   TraceContext *traceContext = ctx->getTraceContext();
+  size_t eventTag = threads::getThreadId();
+  if (glow::flags::useInferencePerspectiveTrace) {
+    eventTag = traceContext->getRequestID();
+  }
   if (traceContext) {
-    TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,
-                      "ThreadPoolExecutor::handleResult");
+    TRACE_EVENT_TAG_BEGIN(
+        executionState->getRawResultContextPtr()->getTraceContext(),
+        TraceLevel::RUNTIME, "ThreadPoolExecutor::handleResult", eventTag);
   }
 
   auto runWasSuccess = !err;
@@ -270,8 +296,14 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   // time. Once decrementInflightNodes() is called, only the thread that get
   // noNodesInflight == true can access executionState.
   if (traceContext) {
-    TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
-                    "ThreadPoolExecutor::handleResult");
+    TRACE_EVENT_TAG_END(
+        executionState->getRawResultContextPtr()->getTraceContext(),
+        TraceLevel::RUNTIME, "ThreadPoolExecutor::handleResult", eventTag);
+    if (glow::flags::useInferencePerspectiveTrace) {
+      TRACE_EVENT_TAG_END(
+          executionState->getRawResultContextPtr()->getTraceContext(),
+          TraceLevel::RUNTIME, "Inference request", eventTag);
+    }
     executionState->insertIntoTraceContext(traceContext);
   }
 
