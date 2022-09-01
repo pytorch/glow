@@ -2224,7 +2224,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
   // Nodes are topologically sorted.
   for (const auto *node : graph.nodes()) {
-    VLOG(1) << "Loading node: " << jitNodeToString(node).c_str();
+    VLOG(3) << "Loading node: " << jitNodeToString(node).c_str();
     if (auto err = loadNode(node)) {
 
       std::string errString;
