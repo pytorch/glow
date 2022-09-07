@@ -73,8 +73,8 @@ class TestGlowShapeInference(utils.TorchGlowTestCase):
         """Test Glow shape inference unsupported symbols."""
 
         def f(a):
-            # chain_matmul is currently not supported by shape inference engine
-            return torch.matrix_power(torch.chain_matmul(a * 3, a + 4), 3)
+            # linalg.multi_dot is currently not supported by shape inference engine
+            return torch.matrix_power(torch.linalg.multi_dot([a * 3, a + 4]), 3)
 
         a = torch.randn(3, 3)
 
@@ -86,10 +86,10 @@ class TestGlowShapeInference(utils.TorchGlowTestCase):
         actual = torch_glow.glow_shape_inference_find_unsupported_symbols(
             jit_f_graph, args
         )
-        expected = ["aten::chain_matmul", "aten::linalg_matrix_power"]
+        expected = ["aten::linalg_multi_dot", "aten::linalg_matrix_power"]
         self.assertEqual(set(expected), set(actual))
 
-        blocklist = ["aten::chain_matmul"]
+        blocklist = ["aten::linalg_multi_dot"]
         actual = torch_glow.glow_shape_inference_find_unsupported_symbols(
             jit_f_graph, args, blocklist
         )
@@ -109,7 +109,7 @@ class TestGlowShapeInference(utils.TorchGlowTestCase):
             x6 = x5 / b
             x7 = x6 * a
             x8 = x7 * b
-            return x8 * torch.chain_matmul(x8, x8)
+            return x8 * torch.linalg.multi_dot([x8, x8])
 
         torch_glow.enableFusionPass_DO_NOT_USE_THIS()
         torch_glow.setFusionStartIndex(3)
@@ -127,18 +127,18 @@ class TestGlowShapeInference(utils.TorchGlowTestCase):
         args = (a, b)
 
         # Don't skip nodes after the last fusion node.
-        # in this case, one of the nodes (chain_matmul) following the last fusion node
+        # in this case, one of the nodes (linalg.multi_dot) following the last fusion node
         # is not supported, and should be reported.
         actual = torch_glow.glow_shape_inference_find_unsupported_symbols(
             jit_f_graph, args, skip_last_fusion_node=False
         )
         expected = [
-            "aten::chain_matmul",
+            "aten::linalg_multi_dot",
         ]
         self.assertEqual(set(expected), set(actual))
 
         # DO skip nodes after the last fusion node.
-        # in this case, one of the nodes (chain_matmul) following the last fusion node
+        # in this case, one of the nodes (linalg.multi_dot) following the last fusion node
         # is not supported, but is suppressed due to the skip_last_fusion_node flag.
         actual = torch_glow.glow_shape_inference_find_unsupported_symbols(
             jit_f_graph, args, skip_last_fusion_node=True
