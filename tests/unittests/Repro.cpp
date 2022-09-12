@@ -138,6 +138,11 @@ llvm::cl::opt<bool> glowEnableDeviceTrace(
     llvm::cl::desc("Enable trace events from inference backend device."),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<unsigned> warmupRequestsOpt(
+    "num_warmup_requests",
+    llvm::cl::desc("Number of warm up requests to ignore for tracing."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> skipCorrectnessCheck(
     "skip_correctness_check", llvm::cl::desc("Skip correctness check"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
@@ -703,7 +708,8 @@ int run() {
     folly::CPUThreadPoolExecutor threadPool(concurrentCountOpt);
     std::mutex mutex;
     std::condition_variable cv;
-    int numTotalInferences = inputGroupSize * itersOpt;
+    int numInferences = inputGroupSize * itersOpt;
+    int numTotalInferences = numInferences + warmupRequestsOpt;
     int numFinishedInferences = 0;
 
     // Figure out which placeholder is input.
@@ -757,13 +763,17 @@ int run() {
       threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
                       numInferencesIssued, &mergedTraceContext, &hostManager,
                       &result, &cv, &mutex, numTotalInferences,
-                      &numFinishedInferences, runAccuracyChecks,
+                      &numFinishedInferences, runAccuracyChecks, &startTime,
                       enableGlowTrace]() {
         // Setup the inputs.
         auto ctx = glow::make_unique<ExecutionContext>();
 
+        if (numInferencesIssued == warmupRequestsOpt) {
+          startTime = std::chrono::steady_clock::now();
+        }
+
         TraceContext *traceContext = nullptr;
-        if (enableGlowTrace) {
+        if (enableGlowTrace && (numInferencesIssued >= warmupRequestsOpt)) {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
@@ -1026,9 +1036,9 @@ int run() {
     std::chrono::duration<double, std::milli> duration = endTime - startTime;
     std::cout << "Total inference duration (ms): " << duration.count() << "\n";
     std::cout << "Avg inference duration (ms): "
-              << duration.count() / numTotalInferences << "\n";
+              << duration.count() / numInferences << "\n";
     std::cout << "Avg inference per second: "
-              << numTotalInferences * 1000 / duration.count()
+              << numInferences * 1000 / duration.count()
               << std::endl; // Use endl to flush the buffer
     nowTime = std::chrono::steady_clock::now();
   } while (std::chrono::duration_cast<std::chrono::seconds>(nowTime -
