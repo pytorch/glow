@@ -204,7 +204,7 @@ getSerializedModuleMap(
                          std::string, std::unique_ptr<BlockStreamBase>>>>
       methodNameToSerializedMap;
   for (const auto &kv : method_compile_spec) {
-    const auto methodName = kv.key().toString()->string();
+    const auto methodName = kv.key().toStringRef();
     // CHECK IF SAME TO COMPILE()
     auto it = runnerMap.find(methodName);
     RETURN_ERR_IF_NOT(
@@ -751,7 +751,7 @@ compileImpl(const torch::jit::Module &origModule,
   auto compileModule = frozenModuleOrErr.get();
   // Compile each method
   for (const auto &kv : method_compile_spec) {
-    const auto methodName = kv.key().toString()->string();
+    const auto methodName = kv.key().toStringRef();
     const auto &method = compileModule.get_method(methodName);
     auto it = nameToOrigGraph.find(methodName);
     CHECK(it != nameToOrigGraph.end())
