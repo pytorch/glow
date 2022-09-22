@@ -35,6 +35,7 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include <glog/logging.h>
 
+#include "folly/String.h"
 #include "folly/stats/Histogram.h"
 #include "folly/stop_watch.h"
 
@@ -309,6 +310,8 @@ struct InferenceResult {
   Error error = Error::empty();
   std::unique_ptr<ExecutionContext> ctx;
   int index = 0;
+  std::chrono::time_point<std::chrono::steady_clock> serverStartTime;
+  std::chrono::time_point<std::chrono::steady_clock> startTime;
   std::chrono::time_point<std::chrono::steady_clock> endTime;
 };
 
@@ -434,8 +437,15 @@ static float cosineSimilarity(const Tensor &t1, const Tensor &t2) {
   }
 }
 
+std::vector<int64_t> getMetrics(const folly::Histogram<int64_t> &hist) {
+  return {hist.getPercentileEstimate(0.25), hist.getPercentileEstimate(0.5),
+          hist.getPercentileEstimate(0.75), hist.getPercentileEstimate(0.9),
+          hist.getPercentileEstimate(0.95), hist.getPercentileEstimate(0.99)};
+}
+
 int run() {
   int numFailed = 0;
+  int numCounted = 0;
 
   int numTop1Matches = 0;
   int numTopKMatches = 0;
@@ -780,6 +790,7 @@ int run() {
         }
         watch.reset();
       }
+      result.serverStartTime = std::chrono::steady_clock::now();
 
       threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
                       numInferencesIssued, &mergedTraceContext, &hostManager,
@@ -789,8 +800,9 @@ int run() {
         // Setup the inputs.
         auto ctx = glow::make_unique<ExecutionContext>();
 
+        result.startTime = std::chrono::steady_clock::now();
         if (numInferencesIssued == warmupRequestsOpt) {
-          startTime = std::chrono::steady_clock::now();
+          startTime = result.startTime;
         }
 
         TraceContext *traceContext = nullptr;
@@ -873,6 +885,8 @@ int run() {
     cv.wait(lock,
             [&]() { return numFinishedInferences >= numTotalInferences; });
 
+    folly::Histogram<int64_t> serverTimeHist(1000, 0, 100000);
+    folly::Histogram<int64_t> clientTimeHist(1000, 0, 100000);
     auto endTime = startTime;
     llvm::outs() << "All inferences done. Checking results\n";
     for (auto &result : results) {
@@ -895,6 +909,14 @@ int run() {
           ss << "output_dump_" << result.index << ".onnx";
           of.open(ss.str(), std::ios::binary);
           CHECK(of) << "Cannot create output dump file: " << ss.str();
+        }
+
+        if (++numCounted > warmupRequestsOpt) {
+          std::chrono::duration<double, std::micro> duration =
+              result.endTime - result.startTime;
+          clientTimeHist.addValue(duration.count());
+          duration = result.endTime - result.serverStartTime;
+          serverTimeHist.addValue(duration.count());
         }
 
         if (runAccuracyChecks) {
@@ -1059,7 +1081,11 @@ int run() {
     std::cout << "Avg inference duration (ms): "
               << duration.count() / numInferences << "\n";
     std::cout << "Avg inference per second: "
-              << numInferences * 1000 / duration.count()
+              << numInferences * 1000 / duration.count() << "\n";
+    std::cout << "Server wall time (us) p25, p50, p75, p90, p95, p99: "
+              << folly::join(" ", getMetrics(serverTimeHist)) << "\n";
+    std::cout << "client wall time (us) p25, p50, p75, p90, p95, p99: "
+              << folly::join(" ", getMetrics(clientTimeHist))
               << std::endl; // Use endl to flush the buffer
     nowTime = std::chrono::steady_clock::now();
   } while (std::chrono::duration_cast<std::chrono::seconds>(nowTime -
