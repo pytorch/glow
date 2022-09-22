@@ -36,6 +36,7 @@
 #include <glog/logging.h>
 
 #include "folly/stats/Histogram.h"
+#include "folly/stop_watch.h"
 
 #include <fstream>
 #include <iostream>
@@ -131,6 +132,12 @@ llvm::cl::alias requestCountOpt("request_count",
 
 llvm::cl::opt<unsigned> durationMinOpt(
     "duration_min", llvm::cl::desc("Running duration limit in minutes"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> qpsTargetOpt(
+    "qps_target",
+    llvm::cl::desc(
+        "QPS target. Default:0 saturates device under closed loop testing"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> glowEnableDeviceTrace(
@@ -752,6 +759,12 @@ int run() {
     }
 
     auto startTime = std::chrono::steady_clock::now();
+    folly::stop_watch<std::chrono::microseconds> watch;
+    auto interval = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::seconds(1));
+    if (qpsTargetOpt > 0) {
+      interval = interval / qpsTargetOpt;
+    }
     std::list<InferenceResult> results;
     for (int ioIndex = 0, numInferencesIssued = 0;
          numInferencesIssued < numTotalInferences; ++numInferencesIssued,
@@ -759,6 +772,19 @@ int run() {
 
       results.emplace_back();
       auto &result = results.back();
+
+      if (qpsTargetOpt > 0) {
+        auto toSleep = interval - watch.elapsed();
+        if (toSleep > std::chrono::microseconds(0)) {
+          /* sleep override */
+          std::this_thread::sleep_for(toSleep);
+        } else {
+          LOG(INFO) << "Not keeping up with qps. Last iter ="
+                    << (watch.elapsed() - interval).count() << "us vs "
+                    << interval.count() << "us target";
+        }
+        watch.reset();
+      }
 
       threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
                       numInferencesIssued, &mergedTraceContext, &hostManager,
