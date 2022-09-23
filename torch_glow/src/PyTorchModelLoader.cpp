@@ -1718,7 +1718,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::batch_norm"},
        &PyTorchModelLoader::loadBatchNorm,
        &PyTorchModelLoader::getCorrectTypeFromInput<BatchNormInputs::input>},
-      {{"aten::norm", "aten::frobenius_norm"},
+      {{"aten::norm", "aten::frobenius_norm", "aten::linalg_vector_norm"},
        &PyTorchModelLoader::loadNorm,
        &PyTorchModelLoader::getCorrectTypeFromInput<0>},
       {{"quantized::batch_norm2d"},
