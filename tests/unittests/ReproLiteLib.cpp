@@ -75,7 +75,7 @@ void ReproLiteLib::loadFromAFG() {
   for (auto &item : res.toGenericDict()) {
     at::IValue key = item.key();
     const at::IValue &val = item.value();
-    strweights_[key.toString()->string()] = (void *)&val;
+    strweights_[key.toStringRef()] = (void *)&val;
   }
 }
 
