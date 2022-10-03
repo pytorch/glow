@@ -6363,7 +6363,7 @@ bool Function::verify(const Backend *backend) const {
   bool isValid = true;
   // Check if the layout verifying is disabled, which will accept all layout for
   // any ops.
-  VLOG(1) << "Layout requirements checking is "
+  VLOG(3) << "Layout requirements checking is "
           << (glow::flags::DisableLayoutVerifying ? "disabled" : "enabled");
   if (!glow::flags::DisableLayoutVerifying) {
     if (backend) {
