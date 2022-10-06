@@ -80,8 +80,7 @@ public:
     instr2->setParentGroupFusionInstr(this);
   }
 
-  FusionGroupInst(llvm::StringRef name,
-                  llvm::SmallVectorImpl<Instruction *> &instrs)
+  FusionGroupInst(llvm::StringRef name, llvm::ArrayRef<Instruction *> instrs)
       : Instruction(name, Kinded::Kind::FusionGroupInstKind, nullptr, {}) {
     for (Instruction *instr : instrs) {
       transferOperands(instr);
