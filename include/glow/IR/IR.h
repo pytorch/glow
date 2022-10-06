@@ -129,6 +129,11 @@ private:
   /// Parent FusionGroupInstr this instruction belongs to.
   Instruction *parentFusionGroupInstr_;
 
+  /// User-data that is associated with this instruction.
+  /// The user data resources are not owned by Instructions and its
+  /// resource lifecycle should be handled by the client code.
+  void *userData_{nullptr};
+
   /// If a predicate is set this index points to the non-zero index of the
   /// predicate in the instruction list.
   unsigned predicateIndex_{0};
@@ -162,6 +167,12 @@ public:
   void setPredicate(Value *p);
   /// Checks if a predicate is assigned to the current node.
   bool hasPredicate() const;
+
+  bool hasUserData() const;
+  template <typename T> T getUserData() const {
+    return reinterpret_cast<T>(userData_);
+  }
+  void setUserData(void *data) { userData_ = data; }
 
   /// Adds a new operand \p op at the end of the operand list.
   void pushOperand(Operand op);
