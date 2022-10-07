@@ -33,9 +33,7 @@ class TestAttention(utils.TorchGlowTestCase):
         """Basic test of the PyTorch attention Node on Glow."""
         inputs = torch.randn(2, 4, 32)
         model = SimpleAttentionModule()
-        model.eval()
         torch_glow.enable_ignore_div_rounding_args()
-
         utils.compare_tracing_methods(
             model,
             inputs,
