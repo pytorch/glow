@@ -35,4 +35,10 @@
 #define GET_TYPE_BY_NAME(module, arg) module.getTypeByName(arg)
 #endif
 
+#if LLVM_VERSION_MAJOR >= 12
+#define GET_FS_OPENFLAGS(x) llvm::sys::fs::OpenFlags::O##x
+#else
+#define GET_FS_OPENFLAGS(x) llvm::sys::fs::OpenFlags::x
+#endif
+
 #endif // GLOW_IR_LLVMAPIMACROS_H

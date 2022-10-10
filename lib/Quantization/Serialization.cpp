@@ -15,6 +15,7 @@
  */
 
 #include "glow/Quantization/Serialization.h"
+#include "glow/IR/LLVMAPIMacros.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Support.h"
 
@@ -115,7 +116,7 @@ void serializeProfilingInfosToYaml(
 
   // Open YAML output stream.
   std::error_code EC;
-  llvm::raw_fd_ostream outputStream(fileName, EC, llvm::sys::fs::F_None);
+  llvm::raw_fd_ostream outputStream(fileName, EC, GET_FS_OPENFLAGS(F_None));
   CHECK(!EC) << "Error opening YAML file '" << fileName.str() << "'!";
   llvm::yaml::Output yout(outputStream);
 

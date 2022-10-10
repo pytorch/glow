@@ -500,8 +500,8 @@ int Executor::executeNetwork() {
           types.push_back(&preloadTy);
         } else {
           // get types of all input tensors.
-          for_each(inputImageData.begin(), inputImageData.end(),
-                   [&](auto *t) { types.push_back(&t->getType()); });
+          std::for_each(inputImageData.begin(), inputImageData.end(),
+                        [&](auto *t) { types.push_back(&t->getType()); });
         }
 
         // Build and compile the graph, then get input and output Placeholders.
@@ -525,7 +525,7 @@ int Executor::executeNetwork() {
           CHECK((*it).second) << "Placeholder in input map is NULL.";
           inPHs.push_back((*it).second);
         };
-        for_each(oPHM.begin(), oPHM.end(), [&](auto &p) {
+        std::for_each(oPHM.begin(), oPHM.end(), [&](auto &p) {
           CHECK(p.second) << "Placeholder in output map is NULL.";
           outPHs.push_back(p.second);
         });

@@ -88,8 +88,8 @@ static void printHeader(llvm::StringRef headerFileName,
                         llvm::StringRef modelInfo, llvm::StringRef modelApi,
                         llvm::StringRef headerExtra) {
   std::error_code EC;
-  llvm::raw_fd_ostream headerFile(headerFileName, EC,
-                                  llvm::sys::fs::OpenFlags::F_Text);
+  llvm::raw_fd_ostream headerFile(headerFileName, EC, GET_FS_OPENFLAGS(F_Text));
+
   CHECK(!EC) << "Could not open header file!";
   std::string header;
   header += "// Bundle API auto-generated header file. Do not edit!\n";
@@ -236,7 +236,7 @@ Value *BundleSaver::getWeightForNode(const Storage *V) const {
 
 void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
   std::error_code EC;
-  llvm::raw_fd_ostream weightsFile(weightsFileName, EC, llvm::sys::fs::F_None);
+  llvm::raw_fd_ostream weightsFile(weightsFileName, EC, llvm::sys::fs::OF_None);
   CHECK(!EC) << "Could not open the output file for saving the bundle weights "
                 "with file name: "
              << weightsFileName.str();
