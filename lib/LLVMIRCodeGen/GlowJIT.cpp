@@ -551,7 +551,11 @@ llvm::orc::JITDylib &createJITDylib(llvm::orc::ExecutionSession &es) {
 //******************************************************************************
 GlowJITOrcV2::GlowJITOrcV2(std::unique_ptr<llvm::TargetMachine> tm)
     : tm_(std::move(tm)), dl_(tm_->createDataLayout()),
+#if LLVM_VERSION_MAJOR >= 13
+      es_(std::move(*llvm::orc::SelfExecutorProcessControl::Create())),
+#else
       ssp_(std::make_shared<llvm::orc::SymbolStringPool>()), es_(ssp_),
+#endif
       jd_(createJITDylib(es_)),
       objectLayer_(
           es_, []() { return std::make_unique<llvm::SectionMemoryManager>(); }),

@@ -21,6 +21,9 @@
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
+#if LLVM_VERSION_MAJOR >= 13
+#include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
+#endif
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
@@ -138,7 +141,9 @@ class GlowJITOrcV2 {
 
   std::unique_ptr<llvm::TargetMachine> tm_;
   const llvm::DataLayout dl_;
+#if LLVM_VERSION_MAJOR < 13
   std::shared_ptr<llvm::orc::SymbolStringPool> ssp_;
+#endif
   llvm::orc::ExecutionSession es_;
   llvm::orc::JITDylib &jd_;
 

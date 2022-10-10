@@ -20,6 +20,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/IR/LLVMAPIMacros.h"
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "llvm/IR/DebugInfo.h"
@@ -344,8 +345,8 @@ void LLVMIRGen::generateFunctionDebugInfo() {
   assert(!EC && "Could not create absolute path for a file");
   auto irfileFullPath = (path + "/" + irfileName).str();
   llvm::raw_fd_ostream irfile(irfileFullPath, EC,
-                              llvm::sys::fs::OpenFlags::F_Text |
-                                  llvm::sys::fs::OpenFlags::F_Append);
+                              GET_FS_OPENFLAGS(F_Text) |
+                                  GET_FS_OPENFLAGS(F_Append));
   assert(!EC && "Error opening output file");
   irfile << irContent;
   irfile.close();
