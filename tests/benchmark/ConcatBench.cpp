@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <fstream>
 #include <future>
 #include <random>
 
@@ -23,6 +23,8 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+
+#include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
@@ -35,112 +37,166 @@ using namespace glow;
  * through targeted experiementation and are not representative of
  * end-to-end workloads.
  */
-class ConcatBench : public Benchmark {
+llvm::cl::OptionCategory ConcatBenchCat("ConcatBench Category");
+llvm::cl::opt<bool> checkCorrectness(
+    "check-results",
+    llvm::cl::desc("Check the correctness of the results against the reference "
+                   "backend (Interpreter)"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(ConcatBenchCat));
+llvm::cl::opt<bool> dumpOnnx("dump_onnx",
+                             llvm::cl::desc("dump onnx text format for model"),
+                             llvm::cl::Optional, llvm::cl::init(false),
+                             llvm::cl::cat(ConcatBenchCat));
+
+struct ConcatParam {
   dim_t m_;
   dim_t n_;
   dim_t numTensors_;
   dim_t numLayers_;
-  PlaceholderBindings bindings_;
-  std::unique_ptr<runtime::HostManager> hostManager_;
-  size_t asyncLaunchSize_;
-  const char *backendStr_;
+  dim_t numReps_;
+  dim_t numAsyncLaunches_;
+  std::string backendStr_;
+  std::string devId_;
   ElemKind dtype_;
+};
+
+class ConcatBench : public Benchmark {
+  ConcatParam param_;
   size_t elementSize_;
-  const char *devId_;
+  ExecutionContext context_;
+  PlaceholderBindings &bindings_;
+  std::unique_ptr<runtime::HostManager> hostManager_;
+
+  // Refernce bindings and network:
+  ExecutionContext refContext_;
+  PlaceholderBindings &refBindings_;
+  std::unique_ptr<runtime::HostManager> refHostManager_;
 
 public:
-  ConcatBench(dim_t m_, dim_t n_, dim_t numTensors_, dim_t numLayers_,
-              dim_t asyncLaunchSize_, const char *backendStr_,
-              const char *dtypeStr_, const char *devId_ = nullptr)
-      : m_(m_), n_(n_), numTensors_(numTensors_), numLayers_(numLayers_),
-        asyncLaunchSize_(asyncLaunchSize_), backendStr_(backendStr_),
-        devId_(devId_) {
-
-    dtype_ = ElemKind::Float16Ty;
+  explicit ConcatBench(ConcatParam param_)
+      : param_(param_), bindings_(*context_.getPlaceholderBindings()),
+        refBindings_(*refContext_.getPlaceholderBindings()) {
     elementSize_ = 2;
-    if (std::string(dtypeStr_) == "Float16") {
-      dtype_ = ElemKind::Float16Ty;
+    if (param_.dtype_ == ElemKind::Float16Ty) {
       elementSize_ = 2;
-    } else if (std::string(dtypeStr_) == "Float32") {
-      dtype_ = ElemKind::FloatTy;
+
+    } else {
       elementSize_ = 4;
     }
   }
 
-  void setup() override {
-
-    // Setup host manager
-    std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
-    if (devId_ != nullptr) {
-      config->parameters["DeviceID"] = devId_;
-    }
-    configs.push_back(std::move(config));
-    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
-
-    std::unique_ptr<Module> mod(new Module);
-    auto fn = mod->createFunction("singleNode");
+  void addConcatNode(std::unique_ptr<Module> &mod, Function *fn,
+                     ConcatParam param) {
     // Create multiple chains of Concat nodes
-    std::vector<Placeholder *> A(numTensors_);
-    std::vector<NodeValue> A_broadcast(numTensors_);
-    std::vector<NodeValue> A_concat(numTensors_);
-    std::vector<NodeValue> slices(numTensors_);
+    std::vector<Placeholder *> A(param.numTensors_);
+    std::vector<NodeValue> A_broadcast(param.numTensors_);
+    std::vector<NodeValue> A_concat(param.numTensors_);
+    std::vector<NodeValue> slices(param.numTensors_);
 
     Placeholder *output;
 
-    for (size_t tensor = 0; tensor < numTensors_; tensor++) {
-      A[tensor] = mod->createPlaceholder(dtype_, {1, n_},
+    for (size_t tensor = 0; tensor < param.numTensors_; tensor++) {
+      A[tensor] = mod->createPlaceholder(param.dtype_, {1, param.n_},
                                          "A" + std::to_string(tensor), false);
-      A_broadcast[tensor] = fn->createBroadcast(
-          "A_bcast" + std::to_string(tensor), A[tensor], {m_, n_}, 0);
+      A_broadcast[tensor] =
+          fn->createBroadcast("A_bcast" + std::to_string(tensor), A[tensor],
+                              {param.m_, param.n_}, 0);
     }
-    output =
-        mod->createPlaceholder(dtype_, {1, n_ * numTensors_}, "output", false);
+    output = mod->createPlaceholder(
+        param.dtype_, {1, param.n_ * param.numTensors_}, "output", false);
 
-    for (size_t tensor = 0; tensor < numTensors_; tensor++) {
+    for (size_t tensor = 0; tensor < param.numTensors_; tensor++) {
       A_concat[tensor / 2 * 2 + ((tensor % 2) ? 0 : 1)] = A_broadcast[tensor];
     }
     auto *concat = fn->createConcat("concat_0", A_concat, 1);
 
-    for (size_t layer = 1; layer < numLayers_; layer++) {
-      for (size_t tensor = 0; tensor < numTensors_; tensor++) {
-        dim_t start_n =
-            tensor / 2 * 2 * n_ + ((tensor % 2) ? (3 * n_ / 2) : (0));
-        dim_t end_n = start_n + ((tensor % 2) ? (n_ / 2) : (3 * n_ / 2));
-        slices[tensor] = fn->createSlice("slice_" + std::to_string(tensor),
-                                         concat, {0, start_n}, {m_, end_n});
+    for (size_t layer = 1; layer < param.numLayers_; layer++) {
+      for (size_t tensor = 0; tensor < param.numTensors_; tensor++) {
+        dim_t start_n = tensor / 2 * 2 * param.n_ +
+                        ((tensor % 2) ? (3 * param.n_ / 2) : (0));
+        dim_t end_n =
+            start_n + ((tensor % 2) ? (param.n_ / 2) : (3 * param.n_ / 2));
+        slices[tensor] =
+            fn->createSlice("slice_" + std::to_string(tensor), concat,
+                            {0, start_n}, {param.m_, end_n});
       }
-      for (size_t tensor = 0; tensor < numTensors_; tensor++) {
+      for (size_t tensor = 0; tensor < param.numTensors_; tensor++) {
         A_concat[tensor / 2 * 2 + ((tensor % 2) ? 0 : 1)] = slices[tensor];
       }
       concat = fn->createConcat("concat_" + std::to_string(layer), A_concat, 1);
     }
-    Node *slice =
-        fn->createSlice("slice_final", concat, {0, 0}, {1, n_ * numTensors_});
+    Node *slice = fn->createSlice("slice_final", concat, {0, 0},
+                                  {1, param.n_ * param.numTensors_});
     fn->createSave("save", slice, output);
-    CompilationContext ctx;
-    ctx.dumpFinalGraph = true;
-    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 
-  void run() override {
-    std::vector<std::promise<void>> promises(asyncLaunchSize_);
-    std::vector<std::future<void>> futures;
-
-    // Launch a number of independent requests
-    for (auto &runPromise : promises) {
-      std::unique_ptr<ExecutionContext> contextPtr(new ExecutionContext);
-      futures.push_back(runPromise.get_future());
-      hostManager_->runNetwork(
-          "singleNode", std::move(contextPtr),
-          [&runPromise](runtime::RunIdentifierTy, Error err,
-                        std::unique_ptr<ExecutionContext> /* contextPtr */) {
-            EXIT_ON_ERR(std::move(err));
-            runPromise.set_value();
-          });
+  void setupInternal(bool isRef) {
+    // Setup host manager
+    std::string backendStr = isRef ? "Interpreter" : param_.backendStr_.c_str();
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr.c_str());
+    if (param_.devId_ != "") {
+      config->parameters["DeviceID"] = param_.devId_.c_str();
     }
-    for (auto &fut : futures) {
-      fut.wait();
+    configs.push_back(std::move(config));
+    if (isRef) {
+      refHostManager_ =
+          glow::make_unique<runtime::HostManager>(std::move(configs));
+    } else {
+      hostManager_ =
+          glow::make_unique<runtime::HostManager>(std::move(configs));
+    }
+
+    std::unique_ptr<Module> mod(new Module);
+    auto fn = mod->createFunction("singleNode");
+
+    addConcatNode(mod, fn, param_);
+
+    CompilationContext ctx;
+    ctx.dumpFinalGraph = true;
+    ctx.serializeCompiledDAG = dumpOnnx;
+    if (isRef) {
+      EXIT_ON_ERR(refHostManager_->addNetwork(std::move(mod), ctx));
+    } else {
+      EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
+    }
+  }
+
+  void checkOutput() {
+    // First run on the reference backend
+    dispatchInference("singleNode", refHostManager_.get(), refContext_,
+                      param_.numAsyncLaunches_,
+                      /*useNewExecutionContext*/ true);
+    Tensor *refTensor =
+        refBindings_.get(refBindings_.getPlaceholderByNameSlow("output"));
+    CHECK(refTensor) << "Reference Tensor not found";
+
+    Tensor *noRefTensor =
+        bindings_.get(bindings_.getPlaceholderByNameSlow("output"));
+    CHECK(noRefTensor) << "non-reference Tensor not found";
+
+    // Compare the tensors
+    if (!noRefTensor->isEqual(*refTensor)) {
+      noRefTensor->dump();
+      refTensor->dump();
+      LOG(FATAL) << "Tensors don't match\n";
+    } else {
+      LOG(INFO) << "Tensors match\n";
+    }
+  }
+
+  void setup() override {
+    if (checkCorrectness) {
+      setupInternal(/* isRef */ true);
+    }
+    setupInternal(/* isRef */ false);
+  }
+  void run() override {
+    dispatchInference("singleNode", hostManager_.get(), context_,
+                      param_.numAsyncLaunches_,
+                      /*useNewExecutionContext*/ true);
+    if (checkCorrectness) {
+      checkOutput();
     }
   }
 
@@ -148,9 +204,49 @@ public:
 
   // Two inputs per layer and one output
   double gbytes() const {
-    return elementSize_ * m_ * n_ * numTensors_ * numLayers_ / 1e9;
+    return elementSize_ * param_.m_ * param_.n_ * param_.numTensors_ *
+           param_.numLayers_ / 1e9;
   }
 };
+
+#define DEVICE_ID 9
+
+ConcatParam parseArgs(int argc, char *argv[]) {
+  ConcatParam param;
+
+  param.m_ = atoi(argv[1]);
+  param.n_ = atoi(argv[2]);
+  param.numTensors_ = atoi(argv[3]);
+  param.numLayers_ = atoi(argv[4]);
+  param.numReps_ = atoi(argv[5]);
+  param.numAsyncLaunches_ = atoi(argv[6]);
+  param.backendStr_ = std::string(argv[7]);
+  if (std::string(argv[8]) == "Float16") {
+    param.dtype_ = ElemKind::Float16Ty;
+  } else if (std::string(argv[8]) == "Float32") {
+    param.dtype_ = ElemKind::FloatTy;
+  } else {
+    llvm_unreachable("Invalid dtype");
+  }
+
+  printf("m %zu\n", (size_t)param.m_);
+  printf("n %zu\n", (size_t)param.n_);
+  printf("numTensors %zu\n", (size_t)param.numTensors_);
+  printf("numLayers %zu\n", (size_t)param.numLayers_);
+  printf("numReps %zu\n", (size_t)param.numReps_);
+  printf("numAsyncLaunches %zu\n", (size_t)param.numAsyncLaunches_);
+  printf("backendStr %s\n", param.backendStr_.c_str());
+  printf("dtypeStr %s\n", argv[8]);
+
+  if (argc > DEVICE_ID) {
+    printf("devId %s\n", argv[DEVICE_ID]);
+    param.devId_ = std::string(argv[DEVICE_ID]);
+  } else {
+    param.devId_ = std::string("");
+  }
+  printf("\n\n");
+  return param;
+}
 
 int main(int argc, char *argv[]) {
   printf("Concat Microbenchmark\n");
@@ -161,48 +257,39 @@ int main(int argc, char *argv[]) {
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
   benchParseGlowOpts(argc, argv);
-  assert(argc == 9 || argc == 10);
-  size_t m = atoi(argv[1]);
-  size_t n = atoi(argv[2]);
-  size_t numTensors = atoi(argv[3]);
-  size_t numLayers = atoi(argv[4]);
-  size_t reps = atoi(argv[5]);
-  size_t asyncLaunches = atoi(argv[6]);
-  const char *backendStr = argv[7];
-  const char *dtypeStr = argv[8];
-  char *dev_id = nullptr;
 
-  if (argc > 9) {
-    dev_id = argv[9];
-    printf("Setting backend device: \"%s\"\n", dev_id);
+  ConcatParam param = parseArgs(argc, argv);
+  if (param.numTensors_ % 2 != 0) {
+    fprintf(stderr, "Error: numTensors must be a multiple of 2!\n");
+    return -1;
   }
 
-  assert(reps > 0);
-
-  ConcatBench b(m, n, numTensors, numLayers, asyncLaunches, backendStr,
-                dtypeStr, dev_id);
-  auto times = bench(&b, reps);
+  ConcatBench b(param);
+  auto times = bench(&b, param.numReps_);
   printf("_,benchName,_,m,n,numTensors,numLayers,numReps,numAsyncLaunches,"
          "backendStr,dtypeStr,runtime,gbytesPerSecPerChain\n");
   for (auto t : times) {
     printf("BenchResult,ConcatBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,"
            "%2.6lf,%5.2lf\n",
-           m, n, numTensors, numLayers, reps, asyncLaunches, backendStr,
-           dtypeStr, t / asyncLaunches, b.gbytes() * asyncLaunches / t);
+           param.m_, param.n_, param.numTensors_, param.numLayers_,
+           param.numReps_, param.numAsyncLaunches_, param.backendStr_.c_str(),
+           argv[8], t / param.numAsyncLaunches_,
+           b.gbytes() * param.numAsyncLaunches_ / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
   std::nth_element(times.begin(), times.begin() + midElt, times.end());
   double median = times[midElt];
-  double median_runtime = median / ((double)asyncLaunches);
-  double min_runtime = min / ((double)asyncLaunches);
+  double medianRuntime = median / ((double)param.numAsyncLaunches_);
+  double minRuntime = min / ((double)param.numAsyncLaunches_);
   printf("_,benchName,_,m,n,numTensors,numLayers,numReps,numAsyncLaunches,"
          "backendStr,dtypeStr,medianRuntime,minRuntime,"
          "medianGbytesPerSecPerChain,maxGbytesPerSecPerChain\n");
   printf("BenchSummary,ConcatBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,"
          "%2.6lf,%2.6lf,%"
          "5.2lf, %5.2lf\n",
-         m, n, numTensors, numLayers, reps, asyncLaunches, backendStr, dtypeStr,
-         median_runtime, min_runtime, b.gbytes() / median_runtime,
-         b.gbytes() / min_runtime);
+         param.m_, param.n_, param.numTensors_, param.numLayers_,
+         param.numReps_, param.numAsyncLaunches_, param.backendStr_.c_str(),
+         argv[8], medianRuntime, minRuntime, b.gbytes() / medianRuntime,
+         b.gbytes() / minRuntime);
 }
