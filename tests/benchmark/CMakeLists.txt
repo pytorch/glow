@@ -125,7 +125,8 @@ target_link_libraries(TransposeBench
                         Graph
                         GraphOptimizer
                         HostManager
-                        CPURuntimeNative)
+                        CPURuntimeNative
+                        BackendTestUtils)
 
 add_executable(ConcatBench
                ConcatBench.cpp)
@@ -136,7 +137,8 @@ target_link_libraries(ConcatBench
                         Graph
                         GraphOptimizer
                         HostManager
-                        CPURuntimeNative)
+                        CPURuntimeNative
+                        BackendTestUtils)
 
 add_executable(Int8AvgPool2dParallelBench
                Int8AvgPool2dParallelBench.cpp)
