@@ -269,11 +269,14 @@ int main(int argc, char *argv[]) {
   printf("_,benchName,_,m,n,numTensors,numLayers,numReps,numAsyncLaunches,"
          "backendStr,dtypeStr,runtime,gbytesPerSecPerChain\n");
   for (auto t : times) {
-    printf("BenchResult,ConcatBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,"
+    printf("BenchResult,ConcatBench,SW,%4u,%4u,%4u,%4u,%4u,%4u,%s,%s,"
            "%2.6lf,%5.2lf\n",
-           param.m_, param.n_, param.numTensors_, param.numLayers_,
-           param.numReps_, param.numAsyncLaunches_, param.backendStr_.c_str(),
-           argv[8], t / param.numAsyncLaunches_,
+           static_cast<unsigned>(param.m_), static_cast<unsigned>(param.n_),
+           static_cast<unsigned>(param.numTensors_),
+           static_cast<unsigned>(param.numLayers_),
+           static_cast<unsigned>(param.numReps_),
+           static_cast<unsigned>(param.numAsyncLaunches_),
+           param.backendStr_.c_str(), argv[8], t / param.numAsyncLaunches_,
            b.gbytes() * param.numAsyncLaunches_ / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
@@ -285,11 +288,14 @@ int main(int argc, char *argv[]) {
   printf("_,benchName,_,m,n,numTensors,numLayers,numReps,numAsyncLaunches,"
          "backendStr,dtypeStr,medianRuntime,minRuntime,"
          "medianGbytesPerSecPerChain,maxGbytesPerSecPerChain\n");
-  printf("BenchSummary,ConcatBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,"
+  printf("BenchSummary,ConcatBench,SW,%4u,%4u,%4u,%4u,%4u,%4u,%s,%s,"
          "%2.6lf,%2.6lf,%"
          "5.2lf, %5.2lf\n",
-         param.m_, param.n_, param.numTensors_, param.numLayers_,
-         param.numReps_, param.numAsyncLaunches_, param.backendStr_.c_str(),
-         argv[8], medianRuntime, minRuntime, b.gbytes() / medianRuntime,
-         b.gbytes() / minRuntime);
+         static_cast<unsigned>(param.m_), static_cast<unsigned>(param.n_),
+         static_cast<unsigned>(param.numTensors_),
+         static_cast<unsigned>(param.numLayers_),
+         static_cast<unsigned>(param.numReps_),
+         static_cast<unsigned>(param.numAsyncLaunches_),
+         param.backendStr_.c_str(), argv[8], medianRuntime, minRuntime,
+         b.gbytes() / medianRuntime, b.gbytes() / minRuntime);
 }
