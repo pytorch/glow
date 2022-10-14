@@ -24,153 +24,164 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
+#include "tests/unittests/BackendTestUtils.h"
+
 using namespace glow;
 
 /*
  * This class implements a transpose microbenchmark. There are multiple
  * layers of transpose, followed by an Add with the tensor from the previous
- * layer.
+ * layer. This benchmark only supports 021 transpose at this moment, we will
+ * add more general coverage and associated tests later.
  *
  * Microbenchmarks are generally useful for understanding performance
  * through targeted experiementation and are not representative of
  * end-to-end workloads.
  */
-class TransposeBench : public Benchmark {
+
+llvm::cl::OptionCategory TransposeBenchCat("TransposeBench Category");
+llvm::cl::opt<bool> checkCorrectness(
+    "check-results",
+    llvm::cl::desc("Check the correctness of the results against the reference "
+                   "backend (Interpreter)"),
+    llvm::cl::Optional, llvm::cl::init(false),
+    llvm::cl::cat(TransposeBenchCat));
+llvm::cl::opt<bool> dumpOnnx("dump_onnx",
+                             llvm::cl::desc("dump onnx text format for model"),
+                             llvm::cl::Optional, llvm::cl::init(false),
+                             llvm::cl::cat(TransposeBenchCat));
+
+struct TransposeParam {
   dim_t batchSize_;
+  dim_t m_;
   dim_t n_;
   dim_t numLayers_;
-  std::unique_ptr<runtime::HostManager> hostManager_;
-  std::vector<std::unique_ptr<ExecutionContext>> contexts_;
-  dim_t asyncLaunchSize_;
-  dim_t numCores_;
-  const char *backendStr_;
+  dim_t numReps_;
+  dim_t numAsyncLaunches_;
+  dim_t numSplits_;
+  std::string backendStr_;
+  std::string devId_;
   ElemKind dtype_;
-  dim_t elementSize_;
-  const char *devId_;
+};
+
+class TransposeBench : public Benchmark {
+  TransposeParam param_;
+  ExecutionContext context_;
+  PlaceholderBindings &bindings_;
+  std::unique_ptr<runtime::HostManager> hostManager_;
+
+  // Refernce bindings and network:
+  ExecutionContext refContext_;
+  PlaceholderBindings &refBindings_;
+  std::unique_ptr<runtime::HostManager> refHostManager_;
 
 public:
-  TransposeBench(dim_t batchSize_, dim_t n_, dim_t numLayers_,
-                 dim_t asyncLaunchSize_, dim_t numCores_,
-                 const char *backendStr_, const char *dtypeStr_,
-                 const char *devId_ = nullptr)
-      : batchSize_(batchSize_), n_(n_), numLayers_(numLayers_),
-        asyncLaunchSize_(asyncLaunchSize_), numCores_(numCores_),
-        backendStr_(backendStr_), devId_(devId_) {
+  explicit TransposeBench(TransposeParam param_)
+      : param_(param_), bindings_(*context_.getPlaceholderBindings()),
+        refBindings_(*refContext_.getPlaceholderBindings()) {}
 
-    dtype_ = ElemKind::Float16Ty;
-    elementSize_ = 2;
-    if (std::string(dtypeStr_) == "Float16") {
-      dtype_ = ElemKind::Float16Ty;
-      elementSize_ = 2;
-    } else if (std::string(dtypeStr_) == "Float32") {
-      dtype_ = ElemKind::FloatTy;
-      elementSize_ = 4;
+  void addTransposeNode(std::unique_ptr<Module> &mod, Function *fn,
+                        TransposeParam param, bool isRef) {
+
+    PlaceholderBindings &bindings = isRef ? refBindings_ : bindings_;
+    auto *input = mod->createPlaceholder(
+        param.dtype_, {param.batchSize_, param.m_, param.n_}, "input", false);
+    if (param.dtype_ == ElemKind::Float16Ty) {
+      bindings.allocate(input)->getHandle<float16>().randomize(-1.f, 1.f,
+                                                               mod->getPRNG());
+    } else {
+      assert(param.dtype_ == ElemKind::FloatTy);
+      bindings.allocate(input)->getHandle<float>().randomize(-1.f, 1.f,
+                                                             mod->getPRNG());
     }
+    auto *output = mod->createPlaceholder(
+        param.dtype_, {param.batchSize_, param.m_, param.n_}, "output", false);
+    bindings.allocate(output);
+    Node *cur = input;
+
+    for (dim_t layer = 0; layer < param.numLayers_; layer++) {
+      auto *xp = fn->createTranspose("transpose_" + std::to_string(layer), cur,
+                                     {0, 2, 1});
+      auto *ad = fn->createAdd("add_" + std::to_string(layer), cur, xp);
+      cur = ad;
+    }
+
+    fn->createSave("save1", cur, output);
+    ::glow::convertPlaceholdersToConstants(fn, bindings, {input, output});
   }
 
-  void setup() override {
-
-    // Create execution contexts here
-    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
-      std::unique_ptr<ExecutionContext> context(new ExecutionContext);
-      contexts_.push_back(std::move(context));
-    }
-
+  void setupInternal(bool isRef) {
     // Setup host manager
+    std::string backendStr = isRef ? "Interpreter" : param_.backendStr_.c_str();
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
-    if (devId_ != nullptr) {
-      config->parameters["DeviceID"] = devId_;
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr.c_str());
+    if (param_.devId_ != "") {
+      config->parameters["DeviceID"] = param_.devId_.c_str();
     }
     configs.push_back(std::move(config));
-    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
+    if (isRef) {
+      refHostManager_ =
+          glow::make_unique<runtime::HostManager>(std::move(configs));
+    } else {
+      hostManager_ =
+          glow::make_unique<runtime::HostManager>(std::move(configs));
+    }
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
 
-    std::vector<Placeholder *> input(numCores_);
-    std::vector<SaveNode *> S(numCores_);
-    auto batchSizePerCore = getBatchSizePerCore(batchSize_, numCores_);
+    addTransposeNode(mod, fn, param_, isRef);
 
-    for (dim_t core = 0; core < numCores_; core++) {
-      if (batchSizePerCore[core] == 0)
-        continue;
-      input[core] =
-          mod->createPlaceholder(dtype_, {batchSizePerCore[core], n_, n_},
-                                 "A" + std::to_string(core), false);
-    }
-
-    // Create multiple chains of Transpose and Add nodes
-    for (dim_t core = 0; core < numCores_; core++) {
-      if (batchSizePerCore[core] == 0)
-        continue;
-      // for each context, add input bindings
-      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
-        if (dtype_ == ElemKind::FloatTy) {
-          contexts_[i]
-              ->getPlaceholderBindings()
-              ->allocate(input[core])
-              ->getHandle<float>()
-              .randomize(0.0f, 1.0f, mod->getPRNG());
-        } else if (dtype_ == ElemKind::Float16Ty) {
-          contexts_[i]
-              ->getPlaceholderBindings()
-              ->allocate(input[core])
-              ->getHandle<float16_t>()
-              .randomize(0.0f, 1.0f, mod->getPRNG());
-        }
-      }
-
-      Node *cur = input[core];
-      for (dim_t layer = 0; layer < numLayers_; layer++) {
-        auto *xp = fn->createTranspose("transpose_" + std::to_string(layer) +
-                                           "_" + std::to_string(core),
-                                       cur, {0, 2, 1});
-        auto *ad = fn->createAdd("add_" + std::to_string(layer) + "_" +
-                                     std::to_string(core),
-                                 cur, xp);
-        cur = ad;
-      }
-
-      S[core] = fn->createSave("save", cur);
-
-      // for each context, allocate output
-      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
-        contexts_[i]->getPlaceholderBindings()->allocate(
-            S[core]->getPlaceholder());
-      }
+    // Split weights
+    if (param_.numSplits_ > 1) {
+      executeVerticalFCWeightsSplit(fn, param_.numSplits_, param_.n_);
     }
 
     CompilationContext ctx;
-    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
+    ctx.dumpFinalGraph = true;
+    ctx.serializeCompiledDAG = dumpOnnx;
+    if (isRef) {
+      EXIT_ON_ERR(refHostManager_->addNetwork(std::move(mod), ctx));
+    } else {
+      EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
+    }
   }
 
-  void run() override {
-    std::vector<std::unique_ptr<ExecutionContext>> localContexts(
-        asyncLaunchSize_);
-    std::vector<std::promise<void>> promises(asyncLaunchSize_);
-    std::vector<std::future<void>> futures;
+  void checkOutput() {
+    // First run on the reference backend
+    dispatchInference("singleNode", refHostManager_.get(), refContext_,
+                      param_.numAsyncLaunches_,
+                      /*useNewExecutionContext*/ true);
+    Tensor *refTensor =
+        refBindings_.get(refBindings_.getPlaceholderByNameSlow("output"));
+    CHECK(refTensor) << "Reference Tensor not found";
 
-    // Launch a number of independent requests
-    int i = 0;
-    for (auto &promise : promises) {
-      futures.push_back(promise.get_future());
-      hostManager_->runNetwork(
-          "singleNode", std::move(contexts_[i]),
-          [&localContexts, &promise,
-           i](runtime::RunIdentifierTy, Error err,
-              std::unique_ptr<ExecutionContext> contextPtr) {
-            EXIT_ON_ERR(std::move(err));
-            localContexts[i] = std::move(contextPtr);
-            promise.set_value();
-          });
-      i++;
+    Tensor *noRefTensor =
+        bindings_.get(bindings_.getPlaceholderByNameSlow("output"));
+    CHECK(noRefTensor) << "non-reference Tensor not found";
+
+    // Compare the tensors
+    if (!noRefTensor->isEqual(*refTensor)) {
+      noRefTensor->dump();
+      refTensor->dump();
+      LOG(FATAL) << "Tensors don't match\n";
+    } else {
+      LOG(INFO) << "Tensors match\n";
     }
-    for (auto &fut : futures) {
-      fut.wait();
+  }
+
+  void setup() override {
+    if (checkCorrectness) {
+      setupInternal(/* isRef */ true);
     }
-    for (dim_t j = 0; j < asyncLaunchSize_; j++) {
-      contexts_[j] = std::move(localContexts[j]);
+    setupInternal(/* isRef */ false);
+  }
+  void run() override {
+    dispatchInference("singleNode", hostManager_.get(), context_,
+                      param_.numAsyncLaunches_,
+                      /*useNewExecutionContext*/ true);
+    if (checkCorrectness) {
+      checkOutput();
     }
   }
 
@@ -178,9 +189,51 @@ public:
 
   // Each layer reads the tensor thrice, and writes the tensor twice
   double gbytes() const {
-    return (5.0 * numLayers_ * batchSize_ * n_ * n_ * elementSize_) / 1e9;
+    return (5.0 * param_.numLayers_ * param_.batchSize_ * param_.n_ *
+            param_.m_) /
+           1e9;
   }
 };
+
+#define DEVICE_ID 11
+
+TransposeParam parseArgs(int argc, char *argv[]) {
+  TransposeParam param;
+  param.batchSize_ = atoi(argv[1]);
+  param.m_ = atoi(argv[2]);
+  param.n_ = atoi(argv[3]);
+  param.numLayers_ = atoi(argv[4]);
+  param.numReps_ = atoi(argv[5]);
+  param.numAsyncLaunches_ = atoi(argv[6]);
+  param.numSplits_ = atoi(argv[7]);
+  param.backendStr_ = std::string(argv[8]);
+  if (std::string(argv[9]) == "Float16") {
+    param.dtype_ = ElemKind::Float16Ty;
+  } else if (std::string(argv[9]) == "Float32") {
+    param.dtype_ = ElemKind::FloatTy;
+  } else {
+    llvm_unreachable("Invalid dtype");
+  }
+
+  printf("batchsize %zu\n", (size_t)param.batchSize_);
+  printf("m %zu\n", (size_t)param.m_);
+  printf("n %zu\n", (size_t)param.n_);
+  printf("numLayers %zu\n", (size_t)param.numLayers_);
+  printf("numReps %zu\n", (size_t)param.numReps_);
+  printf("numAsyncLaunches %zu\n", (size_t)param.numAsyncLaunches_);
+  printf("numSplits %zu\n", (size_t)param.numSplits_);
+  printf("backendStr %s\n", param.backendStr_.c_str());
+  printf("dtypeStr %s\n", argv[9]);
+
+  if (argc > DEVICE_ID) {
+    printf("devId %s\n", argv[DEVICE_ID]);
+    param.devId_ = std::string(argv[DEVICE_ID]);
+  } else {
+    param.devId_ = std::string("");
+  }
+  printf("\n\n");
+  return param;
+}
 
 int main(int argc, char *argv[]) {
   printf("Transpose Microbenchmark\n");
@@ -190,50 +243,44 @@ int main(int argc, char *argv[]) {
   printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
          "environment variable\n");
   benchParseGlowOpts(argc, argv);
-  assert(argc == 9 || argc == 10);
-  size_t batchSize = atoi(argv[1]);
-  size_t n = atoi(argv[2]);
-  size_t numLayers = atoi(argv[3]);
-  size_t numReps = atoi(argv[4]);
-  size_t numAsyncLaunches = atoi(argv[5]);
-  size_t numCores = atoi(argv[6]);
-  const char *backendStr = argv[7];
-  const char *dtypeStr = argv[8];
-  char *dev_id = nullptr;
+  assert(argc == 10 || argc == 11);
 
-  if (argc > 9) {
-    dev_id = argv[9];
-    printf("Setting backend device: \"%s\"\n", dev_id);
-  }
+  std::vector<TransposeParam> params;
+  std::string runHeader;
+  std::string runPrefix;
 
-  assert(numReps > 0);
+  TransposeParam param = parseArgs(argc, argv);
+  params.push_back(param);
 
-  TransposeBench b(batchSize, n, numLayers, numAsyncLaunches, numCores,
-                   backendStr, dtypeStr, dev_id);
+  runHeader = std::string("_,benchName,_,batchsize,m,n,numLayers,numReps,"
+                          "numAsyncLaunches,numSplits,"
+                          "backendStr,dtypeStr\n");
+  runPrefix = std::string(
+      strFormat("TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s",
+                (size_t)param.batchSize_, (size_t)param.m_, (size_t)param.n_,
+                (size_t)param.numLayers_, (size_t)param.numReps_,
+                (size_t)param.numAsyncLaunches_, (size_t)param.numSplits_,
+                argv[8], argv[9]));
 
-  auto times = bench(&b, numReps);
-  printf("_,benchName,_,batchSize,n,numLayers,numReps,numAsyncLaunches,"
-         "numTransposeChains,backendStr,dtypeStr,runtime,gbytesPerSec\n");
+  TransposeBench b(param);
+  auto times = bench(&b, param.numReps_);
+
+  printf("%s,runtime,gBytesPerSec\n", runHeader.c_str());
   for (auto t : times) {
-    printf(
-        "BenchResult,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f\n",
-        batchSize, n, numLayers, numReps, numAsyncLaunches, numCores,
-        backendStr, dtypeStr, t / numAsyncLaunches,
-        b.gbytes() * numAsyncLaunches / t);
+    printf("BenchResult,%s,%f,%f\n", runPrefix.c_str(),
+           t / param.numAsyncLaunches_,
+           b.gbytes() * param.numAsyncLaunches_ / t);
   }
+
   double min = *(std::min_element(times.begin(), times.end()));
-  size_t midElt = times.size() / 2;
+  dim_t midElt = times.size() / 2;
   std::nth_element(times.begin(), times.begin() + midElt, times.end());
   double median = times[midElt];
-  double median_runtime = median / ((double)numAsyncLaunches);
-  double min_runtime = min / ((double)numAsyncLaunches);
-  printf("_,benchName,_,batchSize,n,numLayers,numReps,numAsyncLaunches,"
-         "numTransposeChains,backendStr,dtypeStr,medianRuntime,minRuntime,"
-         "medianGbytesPerSec,maxGbytesPerSec\n");
-  printf(
-      "BenchSummary,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f,%f,%"
-      "f\n",
-      batchSize, n, numLayers, numReps, numAsyncLaunches, numCores, backendStr,
-      dtypeStr, median_runtime, min_runtime, b.gbytes() / median_runtime,
-      b.gbytes() / min_runtime);
+  double medianRuntime = median / ((double)param.numAsyncLaunches_);
+  double minRuntime = min / ((double)param.numAsyncLaunches_);
+
+  printf("%s,medianRuntime,minRuntime,medianGBPerSec,maxGBPerSec\n",
+         runHeader.c_str());
+  printf("BenchSummary,%s,%f,%f,%f,%f\n", runPrefix.c_str(), medianRuntime,
+         minRuntime, b.gbytes() / medianRuntime, b.gbytes() / minRuntime);
 }
