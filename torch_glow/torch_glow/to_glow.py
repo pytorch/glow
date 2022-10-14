@@ -1,4 +1,5 @@
 import collections
+import collections.abc
 import copy
 from contextlib import contextmanager
 from enum import Enum
@@ -131,7 +132,7 @@ def to_glow(model, method_compile_spec):
         A copy of the model that has been lowered to Glow and will run on
         Glow backend devices
     """
-    if not isinstance(method_compile_spec, collections.Mapping):
+    if not isinstance(method_compile_spec, collections.abc.Mapping):
         method_compile_spec = {"forward": method_compile_spec}
 
     return torch._C._jit_to_backend("glow", model, method_compile_spec)
