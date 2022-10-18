@@ -239,8 +239,8 @@ FusionGroupInst *IRBuilder::createFusionGroupInst(llvm::StringRef name,
 }
 
 FusionGroupInst *
-createFusionGroupInst(llvm::StringRef name,
-                      llvm::SmallVectorImpl<Instruction *> instrs) {
+IRBuilder::createFusionGroupInst(llvm::StringRef name,
+                                 llvm::SmallVectorImpl<Instruction *> &instrs) {
   auto *fused = new FusionGroupInst(name, instrs);
   return fused;
 }

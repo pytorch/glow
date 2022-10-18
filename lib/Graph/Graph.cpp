@@ -281,6 +281,8 @@ class AbstractDottyPrinter {
 protected:
   // List of generated vertices.
   std::vector<std::string> vertices_{};
+  // Map of generated subgraphs.
+  std::map<const Node *, std::vector<std::string>> subgraphs_{};
   // List of generated edges.
   std::unordered_set<std::string> edges_{};
   // Map node addresses to unique numbers.
@@ -352,7 +354,11 @@ protected:
     }
     os << "penwidth = 2];\n";
 
-    vertices_.push_back(os.str());
+    if (N->isFused()) {
+      subgraphs_[N->getParentFusionGroup()].push_back(os.str());
+    } else {
+      vertices_.push_back(os.str());
+    }
   }
 
   void dumpEdgeStyle(const Node *N, size_t i, Node *to, std::ostream &os) {
@@ -384,6 +390,19 @@ public:
     // Dump vertices:
     for (auto &v : vertices_) {
       os << v << "\n";
+    }
+
+    // Dump subgraph:
+    for (auto &g : subgraphs_) {
+      os << "subgraph cluster_" << g.first->getName().str() << " { ";
+      for (auto &v : g.second) {
+        os << v << "\n";
+      }
+      os << "label = \"Fusion Group: " << g.first->getName().str() << "\";\n";
+      os << "color=blue;\n";
+      os << "style=rounded;\n";
+      os << "penwidth=2;\n";
+      os << "}\n";
     }
 
     // Dump edges:
@@ -5478,6 +5497,38 @@ TFLiteCustomOperatorNode *Function::createTFLiteCustomOperator(
                                               operatorType, operatorOptions));
 }
 
+FusionGroupNode *Function::createFusionGroup(
+    llvm::StringRef name, llvm::ArrayRef<NodeValue> graphOutputs,
+    llvm::ArrayRef<NodeValue> graphInputs, llvm::ArrayRef<Node *> fusionGraph,
+    std::string fusionType) {
+  std::vector<TypeRef> outputTypes;
+  // Gather graph output types
+  for (auto &out : graphOutputs) {
+    outputTypes.push_back(out.getType());
+  }
+
+  // Create FusionGroup
+  FusionGroupNode *FGN =
+      new FusionGroupNode(name, outputTypes, graphInputs, graphOutputs, {},
+                          fusionGraph, fusionType);
+  for (auto &n : fusionGraph) {
+    n->setParentFusionGroup(FGN);
+  }
+
+  // Create FusionGroupPlaceholder
+  std::vector<Node *> fgInputPlaceholders;
+  for (unsigned i = 0; i < FGN->getNumInputs(); i++) {
+    FusionGroupPlaceholderNode *FGPN = new FusionGroupPlaceholderNode(
+        "fg_input", FGN->getNthInput(i).getType(), i);
+    FGPN->setParentFusionGroup(FGN);
+    addNode(FGPN);
+    fgInputPlaceholders.push_back(FGPN);
+  }
+  FGN->setFusionGroupPlaceholders(fgInputPlaceholders);
+
+  return addNode(FGN);
+}
+
 Constant *Function::createCosineWindow(llvm::StringRef name, dim_t length) {
   auto window = getParent()->createConstant(ElemKind::FloatTy, {length}, name);
   auto windowH = window->getHandle<float>();
@@ -5810,15 +5861,37 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
   /// Each node will be visited no more than once. The method also dumps
   /// edges with their port identifiers in dotty format.
   void visitNode(Node *N) {
+    // Skip FusionGroupPlaceholderNode for debugging clarity.
+    if (auto *FGPN = dyn_cast<FusionGroupPlaceholderNode>(N)) {
+      visitNode(FGPN->getParentFusionGroup()
+                    ->getNthInput(FGPN->getFusionGroupInputIndex())
+                    .getNode());
+      return;
+    }
+
     if (visitedNodes_.find(N) != visitedNodes_.end())
       return;
     visitedNodes_.insert(N);
+
+    // Upon visiting FusionGroupNode, visit all graph outputs.
+    if (auto *FGN = dyn_cast<FusionGroupNode>(N)) {
+      for (auto &toVisit : FGN->getGraphOutputs()) {
+        visitNode(toVisit.getNode());
+      }
+      // Skip dumping of the FuionGroupNode.
+      return;
+    }
 
     dumpNode(N, false);
 
     // Print edges for the predicate field, if it's used.
     if (N->hasPredicate()) {
       auto pred = N->getPredicate();
+      if (auto *FGPN = dyn_cast<FusionGroupPlaceholderNode>(pred)) {
+        pred = FGPN->getParentFusionGroup()
+                   ->getNthInput(FGPN->getFusionGroupInputIndex())
+                   .getNode();
+      }
       size_t resNo = pred.getResNo();
       std::ostringstream edge;
       edge << pred.getNode()->getName().str() << ":"
@@ -5832,6 +5905,17 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
     for (size_t i = 0; i < N->getNumInputs(); i++) {
       Node *to = N->getNthInput(i).getNode();
       size_t resNo = N->getNthInput(i).getResNo();
+      // FusionGroupPlaceholder input will use the original value.
+      if (auto *FGPN = dyn_cast<FusionGroupPlaceholderNode>(to)) {
+        to = FGPN->getParentFusionGroup()
+                 ->getNthInput(FGPN->getFusionGroupInputIndex())
+                 .getNode();
+      }
+      // Treverse FusionGroupNode until discovering an actual node.
+      while (auto *FGN = dyn_cast<FusionGroupNode>(to)) {
+        to = FGN->getGraphOutputs()[resNo].getNode();
+        resNo = FGN->getGraphOutputs()[resNo].getResNo();
+      }
 
       std::ostringstream edge;
       edge << to->getName().str() << ":" << to->getOutputName(resNo) << " -> "

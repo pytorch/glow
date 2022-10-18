@@ -2524,6 +2524,20 @@ public:
                              llvm::StringRef funcName, llvm::StringRef funcImpl,
                              llvm::StringRef funcKind);
 
+  /// Create a FusionGroup node which represents a subgraph.
+  /// Inputs:
+  /// \p name - Name of the fusion group.
+  /// \p graphOutputs - All output node values from the subgraph.
+  /// \p graphInputs - All input node values of the subgraph.
+  /// \p fusionGraph - All nodes presented in the subgraph.
+  /// \p fusionType - The type of the fusion group, could be elementwise,
+  ///   fc epilogue, or any supported type by backend.
+  FusionGroupNode *createFusionGroup(llvm::StringRef name,
+                                     llvm::ArrayRef<NodeValue> graphOutputs,
+                                     llvm::ArrayRef<NodeValue> graphInputs,
+                                     llvm::ArrayRef<Node *> fusionGraph,
+                                     std::string fusionType);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 

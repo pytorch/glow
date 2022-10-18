@@ -1801,6 +1801,47 @@ int main(int argc, char **argv) {
           "return interpolated approximations for arbitrary functions.");
 
   //===--------------------------------------------------------------------===//
+  //                  Fusion Group instruction
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("FusionGroup")
+      .addVariableInput("Inputs")
+      .addVariableResult("Outputs")
+      // Not using MemberType::VectorNodeValue for debug clarity.
+      // NodeBuilder will treat MemberType::VectorNodeValue as node inputs.
+      .addMember(MEMBER_TYPE_INFO(std::vector<glow::NodeValue>), "GraphOutputs")
+      .addMember(MEMBER_TYPE_INFO(std::vector<glow::Node *>),
+                 "FusionGroupPlaceholders", true)
+      .addMember(MEMBER_TYPE_INFO(std::vector<glow::Node *>), "FusionGraph")
+      .addMember(MemberType::String, "FusionType")
+      .addExtraMethod(
+          "Node *getNthFusionGroupPlaceholder(unsigned index) const;",
+          "Node *FusionGroupNode::getNthFusionGroupPlaceholder(unsigned index) "
+          "const { return  (FusionGroupPlaceholders_[index]); };")
+      .skipAutogenSerialization()
+      .skipAutogenDebugDesc()
+      .skipAutogenVisitor()
+      .skipAutogenHasher()
+      .setDocstring(
+          "FusionGroup node represents a fusion group in a glow graph. "
+          "Each fusion group contains a subgraph to be fused by backends. "
+          "Converting a subgraph into a fusion group node will allow "
+          "graph scheduler to schedule the subgraph as a whole to preserve "
+          "the fusion opportunity for backends.");
+
+  BB.newNode("FusionGroupPlaceholder")
+      .addMember(MemberType::Unsigned, "FusionGroupInputIndex")
+      .skipAutogenSerialization()
+      .skipAutogenDebugDesc()
+      .addResultFromCtorArg()
+      .setDocstring(
+          "FusionGroupPlaceholder node represents a input to a fusion group "
+          "subgraph. Each FusionGroupPlaceholder has a corresponding original "
+          "NodeValue in the main graph. "
+          "FusionGroupPlaceholder allow visitor to visit fusion group "
+          "subgraph.");
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 

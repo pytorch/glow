@@ -78,6 +78,13 @@ class NodeBuilder {
   bool hasExtraResults_{false};
   /// Specifies if this Node should skip serialization autogen.
   bool skipAutogenSerialization_{false};
+  /// Specifies if this Node should skip debug description implementation
+  /// autogen.
+  bool skipAutogenDebugDesc_{false};
+  /// Specifies if this Node should skip visitor autogen.
+  bool skipAutogenVisitor_{false};
+  /// Specifies if this Node should skip hasher autogen.
+  bool skipAutogenHasher_{false};
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -203,6 +210,21 @@ public:
 
   NodeBuilder &skipAutogenSerialization() {
     skipAutogenSerialization_ = true;
+    return *this;
+  }
+
+  NodeBuilder &skipAutogenDebugDesc() {
+    skipAutogenDebugDesc_ = true;
+    return *this;
+  }
+
+  NodeBuilder &skipAutogenVisitor() {
+    skipAutogenVisitor_ = true;
+    return *this;
+  }
+
+  NodeBuilder &skipAutogenHasher() {
+    skipAutogenHasher_ = true;
     return *this;
   }
 

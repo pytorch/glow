@@ -2506,3 +2506,142 @@ TEST(Graph, testLogSoftmaxMultiplier) {
 
   EXPECT_TRUE(outputT->isEqual(expectedT));
 }
+
+TEST(Graph, testFusionGroupNode) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  PlaceholderBindings bindings;
+
+  auto *input =
+      MD.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0, "input", false);
+  auto *weights = MD.createPlaceholder(ElemKind::Int8QTy, {32, 32}, 1.0, 0,
+                                       "weights", false);
+  auto *bias =
+      MD.createPlaceholder(ElemKind::Int32QTy, {32}, 1.0, 0, "bias", false);
+  auto *fc_output = MD.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
+                                         "fc_output", false);
+  auto *deq_output =
+      MD.createPlaceholder(ElemKind::Float16Ty, {2, 32}, "deq_output", false);
+
+  auto *fc = F->createFullyConnected("fc", input, weights, bias);
+  auto *deq = F->createDequantize("deq", fc->getResult(), ElemKind::Float16Ty);
+
+  auto fcdeq = F->createFusionGroup(
+      "fcdeq", {fc->getResult(), deq->getResult()},
+      {fc->getNthInput(0), fc->getNthInput(1), fc->getNthInput(2)}, {fc, deq},
+      "FC_Deq");
+
+  F->createSave("fc_save", fcdeq->getNthResult(0), fc_output);
+  F->createSave("deq_save", fcdeq->getNthResult(1), deq_output);
+
+  fc->setNthInput(0, fcdeq->getNthFusionGroupPlaceholder(0));
+  fc->setNthInput(1, fcdeq->getNthFusionGroupPlaceholder(1));
+  fc->setNthInput(2, fcdeq->getNthFusionGroupPlaceholder(2));
+
+  bindings.allocate(input);
+  bindings.allocate(weights);
+  bindings.allocate(bias);
+  bindings.allocate(fc_output);
+  bindings.allocate(deq_output);
+
+  F->dump();
+  auto filePath = F->dumpDAG();
+  auto backend = MockBackend();
+  M.generateIR(backend);
+  M.dump();
+  EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
+}
+
+TEST(Graph, testFusionGroupNodeChain) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  IRFunction M(F);
+  PlaceholderBindings bindings;
+
+  // FC1 -(out)-> FC2 -> Deq2
+  //     -(out)-> Deq1
+  //
+  // Post Fusion:
+  // FC_Deq1 -> (fc_out)-----> FC_Deq2 ->
+  //         -> (fc_deq_out)->
+
+  unsigned long M1 = 128;
+  unsigned long N1 = 64;
+  unsigned long K1 = 32;
+  unsigned long M2 = M1;
+  unsigned long N2 = 16;
+  unsigned long K2 = N1;
+
+  auto *inputVar1 =
+      MD.createPlaceholder(ElemKind::Int8QTy, {M1, K1}, 1, 0, "input1", false);
+  auto *weightsVar1 = MD.createPlaceholder(ElemKind::Int8QTy, {K1, N1}, 1, 0,
+                                           "weights1", false);
+  auto *biasVar1 =
+      MD.createPlaceholder(ElemKind::Int32QTy, {N1}, 1, 0, "bias1", false);
+
+  auto *outVar1 =
+      MD.createPlaceholder(ElemKind::Float16Ty, {M1, N1}, "out1", false);
+
+  auto *weightsVar2 = MD.createPlaceholder(ElemKind::Int8QTy, {K2, N2}, 1, 0,
+                                           "weights2", false);
+  auto *biasVar2 =
+      MD.createPlaceholder(ElemKind::Int32QTy, {N2}, 1, 0, "bias2", false);
+
+  auto *outVar2 =
+      MD.createPlaceholder(ElemKind::Float16Ty, {M2, N2}, "out2", false);
+
+  TypeRef fcOT1 = F->getParent()->uniqueType(ElemKind::Int8QTy, {M1, N1}, 1, 0);
+  TypeRef fcOT2 = F->getParent()->uniqueType(ElemKind::Int8QTy, {M2, N2}, 1, 0);
+  auto *fc1 = F->createFullyConnected("fully_connected1", inputVar1,
+                                      weightsVar1, biasVar1, fcOT1);
+
+  auto *fc2 = F->createFullyConnected("fully_connected2", fc1->getResult(),
+                                      weightsVar2, biasVar2, fcOT2);
+
+  auto *deq2 =
+      F->createDequantize("dequantize2", fc2->getResult(), ElemKind::Float16Ty);
+
+  auto *deq1 =
+      F->createDequantize("dequantize1", fc1->getResult(), ElemKind::Float16Ty);
+
+  auto fcdeq1 = F->createFusionGroup(
+      "fcdeq1", {fc1->getResult(), deq1->getResult()},
+      {fc1->getNthInput(0), fc1->getNthInput(1), fc1->getNthInput(2)},
+      {fc1, deq1}, "FC_Deq");
+
+  fc1->setNthInput(0, fcdeq1->getNthFusionGroupPlaceholder(0));
+  fc1->setNthInput(1, fcdeq1->getNthFusionGroupPlaceholder(1));
+  fc1->setNthInput(2, fcdeq1->getNthFusionGroupPlaceholder(2));
+  fc2->setNthInput(0, fcdeq1->getNthResult(0));
+
+  auto *save1 = F->createSave("return1", fcdeq1->getNthResult(1), outVar1);
+
+  auto fcdeq2 = F->createFusionGroup(
+      "fcdeq2", {fc2->getResult(), deq2->getResult()},
+      {fc2->getNthInput(0), fc2->getNthInput(1), fc2->getNthInput(2)},
+      {fc2, deq2}, "FC_Deq");
+
+  fc2->setNthInput(0, fcdeq2->getNthFusionGroupPlaceholder(0));
+  fc2->setNthInput(1, fcdeq2->getNthFusionGroupPlaceholder(1));
+  fc2->setNthInput(2, fcdeq2->getNthFusionGroupPlaceholder(2));
+
+  auto *save2 = F->createSave("return2", fcdeq2->getNthResult(1), outVar2);
+
+  bindings.allocate(inputVar1);
+  bindings.allocate(weightsVar1);
+  bindings.allocate(weightsVar2);
+  bindings.allocate(biasVar1);
+  bindings.allocate(biasVar2);
+  bindings.allocate(outVar1);
+  bindings.allocate(outVar2);
+
+  F->dump();
+  auto filePath = F->dumpDAG();
+  auto backend = MockBackend();
+  M.generateIR(backend);
+  M.dump();
+  EXPECT_GT(M.getInstrs().size(), 0);
+  llvm::sys::fs::remove(filePath);
+}

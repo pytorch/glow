@@ -110,7 +110,8 @@ public:
 
   FusionGroupInst *
   createFusionGroupInst(llvm::StringRef name,
-                        llvm::SmallVectorImpl<Instruction *> instrs);
+                        llvm::SmallVectorImpl<Instruction *> &instrs);
+
 // Import the auto-generated instruction creation methods:
 #include "glow/AutoGenIRBuilder.h"
 

@@ -58,6 +58,9 @@ protected:
   /// Link to the function holding this node.
   Function *parent_{nullptr};
 
+  /// Link to the fusion group this node belongs to.
+  const Node *parentFusionGroup_{nullptr};
+
 public:
   Node(Kinded::Kind k, llvm::StringRef name)
       : Named(name), Kinded(k), predicate_(this, nullptr), parent_(nullptr) {}
@@ -83,6 +86,13 @@ public:
   Function *getParent() { return parent_; }
   /// Set the link to the function that holds this node.
   void setParent(Function *parent) { parent_ = parent; }
+
+  /// \returns the nullable parent fusion group of the current node.
+  const Node *getParentFusionGroup() const { return parentFusionGroup_; }
+  /// Assigns a parent fusion group to the current node.
+  void setParentFusionGroup(const Node *fg) { parentFusionGroup_ = fg; }
+  /// Check if a parent fusion group is assigned to the current node.
+  bool isFused() const { return parentFusionGroup_ != nullptr; }
 
   /// Getters/setters to access Node's inputs and outputs.
   unsigned getNumInputs() const;

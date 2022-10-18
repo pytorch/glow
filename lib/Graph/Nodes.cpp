@@ -35,6 +35,14 @@ llvm::hash_code Placeholder::getHash() const {
   return llvm::hash_combine(getName());
 }
 
+llvm::hash_code FusionGroupNode::getHash() const {
+  return llvm::hash_combine(
+      llvm::hash_combine_range(Inputs_.begin(), Inputs_.end()),
+      llvm::hash_combine_range(GraphOutputs_.begin(), GraphOutputs_.end()),
+      llvm::hash_combine_range(FusionGraph_.begin(), FusionGraph_.end()),
+      FusionType_);
+}
+
 //===----------------------------------------------------------------------===//
 //                        Visitor methods
 //===----------------------------------------------------------------------===//
@@ -52,6 +60,25 @@ void Storage::visit(const Node *parent, NodeWalker *visitor) const {
     return;
   }
   visitor->pre(parent, this);
+  visitor->post(parent, this);
+}
+
+void FusionGroupNode::visit(Node *parent, NodeWalker *visitor) {
+  if (!visitor->shouldVisit(parent, this)) {
+    return;
+  }
+  visitor->pre(parent, this);
+  if (hasPredicate()) {
+    getPredicate().getNode()->visit(this, visitor);
+  }
+  for (auto &I : Inputs_) {
+    I.getNode()->visit(this, visitor);
+  }
+  // Visit all graph outputs nodes will allow visior to visit the complete
+  // fusion group subgraph prior to post visit of the fusion group node.
+  for (auto &I : GraphOutputs_) {
+    I.getNode()->visit(this, visitor);
+  }
   visitor->post(parent, this);
 }
 
@@ -104,6 +131,37 @@ std::string Placeholder::getDebugDesc(bool skipUsers) const {
   if (!skipUsers) {
     db.addParam("Users", getNumUsers());
   }
+  return db;
+}
+
+std::string FusionGroupNode::getDebugDesc() const {
+  DescriptionBuilder db(getKindName());
+  db.addParam("Name", separateString(getName(), 100, "\n"));
+  if (hasPredicate()) {
+    db.addParam("Predicate", "Yes");
+  }
+  db.addParam("FusionType", getFusionType()).addParam("Users", getNumUsers());
+  {
+    unsigned mIndex = 0;
+    for (const auto &II : getInputs()) {
+      db.addParam("Inputs" + std::to_string(mIndex++), *II.getType());
+    }
+  }
+  for (unsigned i = 0; i < OutputsSize_; i++) {
+    db.addParam("Outputs" + std::to_string(i), *(getOutputsNth(i).getType()));
+  }
+  return db;
+}
+
+std::string FusionGroupPlaceholderNode::getDebugDesc() const {
+  DescriptionBuilder db(getKindName());
+  db.addParam("Name", separateString(getName(), 100, "\n"));
+  if (hasPredicate()) {
+    db.addParam("Predicate", "Yes");
+  }
+  db.addParam("Users", getNumUsers());
+  db.addParam("InputIndex", getFusionGroupInputIndex());
+  db.addParam("Result", *(getResult().getType()));
   return db;
 }
 
@@ -3193,4 +3251,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode) {
   }
   return os;
 }
+
+bool FusionGroupNode::verify() const { return true; }
+
+bool FusionGroupPlaceholderNode::verify() const { return true; }
+
 } // namespace glow

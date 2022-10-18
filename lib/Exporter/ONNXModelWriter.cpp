@@ -2734,6 +2734,8 @@ DEF_UNSUPPORTED_NODE(SparseLabelSplit)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
 DEF_UNSUPPORTED_NODE(ExternalFunctionCall)
+DEF_UNSUPPORTED_NODE(FusionGroup)
+DEF_UNSUPPORTED_NODE(FusionGroupPlaceholder)
 // Gradient nodes.
 DEF_UNSUPPORTED_NODE(AddGrad)
 DEF_UNSUPPORTED_NODE(DivGrad)

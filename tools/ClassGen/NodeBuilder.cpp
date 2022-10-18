@@ -367,6 +367,8 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 
   os << "  if (hasPredicate()) db.addParam(\"Predicate\", \"Yes\");\n";
 
+  os << "  if (isFused()) db.addParam(\"Fused\", \"Yes\");\n";
+
   os << "  db\n";
   if (!enum_.empty()) {
     os << "    .addParam(\"Mode\", getModeStr())\n";
@@ -678,11 +680,17 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
 
 void NodeBuilder::emitCppMethods(std::ostream &os) const {
   emitEdges(os);
-  emitPrettyPrinter(os);
-  emitVisitor(os);
+  if (!skipAutogenDebugDesc_) {
+    emitPrettyPrinter(os);
+  }
+  if (!skipAutogenVisitor_) {
+    emitVisitor(os);
+  }
   emitEquator(os);
   emitCloner(os);
-  emitHasher(os);
+  if (!skipAutogenHasher_) {
+    emitHasher(os);
+  }
   if (!enum_.empty()) {
     emitEnumModePrinters(os);
   }
