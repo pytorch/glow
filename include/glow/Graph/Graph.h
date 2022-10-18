@@ -2710,3 +2710,4 @@ bool isGemmSameAsFullyConnected(const GemmNode *node);
 } // namespace glow
 
 #endif // GLOW_GRAPH_GRAPH_H
+
