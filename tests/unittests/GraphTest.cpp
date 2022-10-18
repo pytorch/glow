@@ -2567,12 +2567,12 @@ TEST(Graph, testFusionGroupNodeChain) {
   // FC_Deq1 -> (fc_out)-----> FC_Deq2 ->
   //         -> (fc_deq_out)->
 
-  unsigned long M1 = 128;
-  unsigned long N1 = 64;
-  unsigned long K1 = 32;
-  unsigned long M2 = M1;
-  unsigned long N2 = 16;
-  unsigned long K2 = N1;
+  dim_t M1 = 128;
+  dim_t N1 = 64;
+  dim_t K1 = 32;
+  dim_t M2 = M1;
+  dim_t N2 = 16;
+  dim_t K2 = N1;
 
   auto *inputVar1 =
       MD.createPlaceholder(ElemKind::Int8QTy, {M1, K1}, 1, 0, "input1", false);
@@ -2616,7 +2616,7 @@ TEST(Graph, testFusionGroupNodeChain) {
   fc1->setNthInput(2, fcdeq1->getNthFusionGroupPlaceholder(2));
   fc2->setNthInput(0, fcdeq1->getNthResult(0));
 
-  auto *save1 = F->createSave("return1", fcdeq1->getNthResult(1), outVar1);
+  F->createSave("return1", fcdeq1->getNthResult(1), outVar1);
 
   auto fcdeq2 = F->createFusionGroup(
       "fcdeq2", {fc2->getResult(), deq2->getResult()},
@@ -2627,7 +2627,7 @@ TEST(Graph, testFusionGroupNodeChain) {
   fc2->setNthInput(1, fcdeq2->getNthFusionGroupPlaceholder(1));
   fc2->setNthInput(2, fcdeq2->getNthFusionGroupPlaceholder(2));
 
-  auto *save2 = F->createSave("return2", fcdeq2->getNthResult(1), outVar2);
+  F->createSave("return2", fcdeq2->getNthResult(1), outVar2);
 
   bindings.allocate(inputVar1);
   bindings.allocate(weightsVar1);
