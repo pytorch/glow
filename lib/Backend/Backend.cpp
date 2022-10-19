@@ -268,6 +268,10 @@ bool Backend::verify(const IRFunction &IR) const {
   return true;
 }
 
+bool Backend::verify(const Instruction &I, bool assertOnErrors) const {
+  return I.verify();
+}
+
 TensorLayoutCommon &Backend::getTensorLayoutRequirements() const {
   return CanonicalTensorLayout::getInstance();
 }

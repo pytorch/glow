@@ -176,6 +176,17 @@ public:
   /// has a good reason not to call IRFunction::verify().
   virtual bool verify(const IRFunction &IR) const;
 
+  /// \returns whether the provided instruction \p I conforms to the
+  /// backend-dependent graph constraints. Giving the backend an opportunity to
+  /// check that everything conforms to its specific restrictions by overriding
+  /// this function. It is highly recommended for backends to make their backend
+  /// specific verifications a super-set of target independent
+  /// Instruction::verify() by calling it in their overridden implementation. It
+  /// is not a strict requirement, of course, in case they diverge / the backend
+  /// has a good reason not to call Instruction::verify().
+  virtual bool verify(const glow::Instruction &I,
+                      bool assertOnErrors = true) const;
+
   /// \returns a reference to the backend-specific tensor layout requirements
   /// singleton. If not overridden, the default requirement is Glow's
   /// "canonical" form.
