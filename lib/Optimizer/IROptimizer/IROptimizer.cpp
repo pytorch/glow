@@ -1608,6 +1608,7 @@ void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers) {
                               std::move(pipeline));
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
+  cctx.backend = &B;
   IRFPM.run(&M, cctx);
   B.runBackendSpecificTransforms(&M);
 }
