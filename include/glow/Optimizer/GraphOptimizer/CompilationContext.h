@@ -366,6 +366,9 @@ struct CompilationContext {
     NumCompilationModes, /// Used to count the number of CompilationModes.
   } compMode{CompilationMode::Infer};
 
+  /// Backend being used.
+  const Backend *backend{nullptr};
+
   /// Options for the Backend to use.
   BackendOptions backendOpts;
 
