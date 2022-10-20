@@ -312,8 +312,8 @@ struct InferenceResult {
   Error error = Error::empty();
   std::unique_ptr<ExecutionContext> ctx;
   int index = 0;
-  std::chrono::time_point<std::chrono::steady_clock> serverStartTime;
-  std::chrono::time_point<std::chrono::steady_clock> startTime;
+  std::chrono::time_point<std::chrono::steady_clock> hostStartTime;
+  std::chrono::time_point<std::chrono::steady_clock> cardStartTime;
   std::chrono::time_point<std::chrono::steady_clock> endTime;
 };
 
@@ -795,7 +795,7 @@ int run() {
         }
         watch.reset();
       }
-      result.serverStartTime = std::chrono::steady_clock::now();
+      result.hostStartTime = std::chrono::steady_clock::now();
 
       threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
                       numInferencesIssued, &mergedTraceContext, &hostManager,
@@ -805,9 +805,9 @@ int run() {
         // Setup the inputs.
         auto ctx = glow::make_unique<ExecutionContext>();
 
-        result.startTime = std::chrono::steady_clock::now();
+        result.cardStartTime = std::chrono::steady_clock::now();
         if (numInferencesIssued == warmupRequestsOpt) {
-          startTime = result.startTime;
+          startTime = result.cardStartTime;
         }
 
         TraceContext *traceContext = nullptr;
@@ -890,8 +890,8 @@ int run() {
     cv.wait(lock,
             [&]() { return numFinishedInferences >= numTotalInferences; });
 
-    folly::Histogram<int64_t> serverTimeHist(1000, 0, 100000);
-    folly::Histogram<int64_t> clientTimeHist(1000, 0, 100000);
+    folly::Histogram<int64_t> cardTimeHist(1000, 0, 100000);
+    folly::Histogram<int64_t> hostTimeHist(1000, 0, 100000);
     auto endTime = startTime;
     llvm::outs() << "All inferences done. Checking results\n";
     for (auto &result : results) {
@@ -918,10 +918,10 @@ int run() {
 
         if (++numCounted > warmupRequestsOpt) {
           std::chrono::duration<double, std::micro> duration =
-              result.endTime - result.startTime;
-          clientTimeHist.addValue(duration.count());
-          duration = result.endTime - result.serverStartTime;
-          serverTimeHist.addValue(duration.count());
+              result.endTime - result.cardStartTime;
+          cardTimeHist.addValue(duration.count());
+          duration = result.endTime - result.hostStartTime;
+          hostTimeHist.addValue(duration.count());
         }
 
         if (runAccuracyChecks) {
@@ -1087,10 +1087,10 @@ int run() {
               << duration.count() / numInferences << "\n";
     std::cout << "Avg inference per second: "
               << numInferences * 1000 / duration.count() << "\n";
-    std::cout << "Server wall time (us) p25, p50, p75, p90, p95, p99: "
-              << folly::join(" ", getMetrics(serverTimeHist)) << "\n";
-    std::cout << "client wall time (us) p25, p50, p75, p90, p95, p99: "
-              << folly::join(" ", getMetrics(clientTimeHist))
+    std::cout << "Card wall time (us) p25, p50, p75, p90, p95, p99: "
+              << folly::join(" ", getMetrics(cardTimeHist)) << "\n";
+    std::cout << "Host wall time (us) p25, p50, p75, p90, p95, p99: "
+              << folly::join(" ", getMetrics(hostTimeHist))
               << std::endl; // Use endl to flush the buffer
     nowTime = std::chrono::steady_clock::now();
   } while (std::chrono::duration_cast<std::chrono::seconds>(nowTime -
