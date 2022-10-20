@@ -1403,7 +1403,7 @@ bool optimizeInserts(IRFunction &M) {
 /// reading directly from the destination using TensorViews with the same
 /// offsets. This is possible because this means the underlying memory is
 /// contiguous in this case.
-bool optimizeExtracts(IRFunction &M) {
+bool optimizeExtracts(IRFunction &M, const CompilationContext &cctx) {
   bool changed = false;
   auto &instrs = M.getInstrs();
   InstructionPtrSet erasedInstructions;
@@ -1442,6 +1442,14 @@ bool optimizeExtracts(IRFunction &M) {
     auto *TVI =
         B.createTensorViewInst((ETI->getName() + ".tv.dest").str(), extractSrc,
                                extractDestAAI->getType(), ETI->getOffsets());
+
+    // Bail if current backend does not support it.
+    if (cctx.backend &&
+        !cctx.backend->verify(*TVI, /* assertOnError */ false)) {
+      // Remove the instruction as it is not legal.
+      TVI->eraseFromParent();
+      continue;
+    }
 
     // Replace all uses of the extract's dest (extractDestAAI) with the TVI.
     replaceAllNonDeallocUsersWith(extractDestAAI, TVI);
@@ -1651,7 +1659,7 @@ bool OptimizeInserts::run(IRFunction *M, const CompilationContext &cctx) {
 }
 
 bool OptimizeExtracts::run(IRFunction *M, const CompilationContext &cctx) {
-  return optimizeExtracts(*M);
+  return optimizeExtracts(*M, cctx);
 }
 
 bool IRVerify::run(IRFunction *M, const CompilationContext &cctx) {
