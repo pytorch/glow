@@ -132,7 +132,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     // TODO: subgraphInst should be in scheduled order.
     for (auto &n : subgraph) {
-      subgraphInst.push_back(getNodeToIR(n));
+      auto inst = getNodeToIR(n);
+      subgraphInst.push_back(inst);
     }
     auto FGI = builder_.createFusionGroupInst(FGN->getName(), subgraphInst);
 

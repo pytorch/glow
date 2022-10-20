@@ -72,6 +72,12 @@ bool isConstantOperation(const Node *N, const Backend &backend,
   if (isa<Placeholder>(N)) {
     return false;
   }
+  if (N->isFused()) {
+    return false;
+  }
+  if (isa<FusionGroupNode>(N) || isa<FusionGroupPlaceholderNode>(N)) {
+    return false;
+  }
   for (size_t idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
     auto input = N->getNthInput(idx);
     if (!isConstantOperation(input.getNode(), backend,
