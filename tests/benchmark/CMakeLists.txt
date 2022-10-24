@@ -114,7 +114,8 @@ target_link_libraries(BatchGemmBench
                         Graph
                         GraphOptimizer
                         HostManager
-                        CPURuntimeNative)
+                        CPURuntimeNative
+                        BackendTestUtils)
 
 add_executable(TransposeBench
                TransposeBench.cpp)
