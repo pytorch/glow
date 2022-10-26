@@ -243,6 +243,11 @@ onnxStatus HostManagerBackend::addNetwork(
         glow::flags::SinkTanhBelowConcat;
     LOG(INFO) << "Sinking tanh below concat";
   }
+  if (glow::flags::HoistTanhAboveSplit) {
+    cctx.optimizationOpts.hoistTanhAboveSplit =
+        glow::flags::HoistTanhAboveSplit;
+    LOG(INFO) << "Hoisting tanh above split";
+  }
   if (glow::flags::UseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =

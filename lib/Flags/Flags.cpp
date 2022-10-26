@@ -53,6 +53,7 @@ bool SkipProvisioning = false;
 bool DisableLayoutVerifying = false;
 bool DisableFreeCompilationResource = false;
 bool SinkTanhBelowConcat = false;
+bool HoistTanhAboveSplit = false;
 bool useInferencePerspectiveTrace = false;
 
 // FP16 Constants
@@ -510,6 +511,12 @@ DEFINE_bool(glow_sink_tanh_below_concat, glow::flags::SinkTanhBelowConcat,
             "Sink tanh ops below concat.");
 DEFINE_validator(glow_sink_tanh_below_concat, [](const char *, bool val) {
   glow::flags::SinkTanhBelowConcat = val;
+  return true;
+});
+DEFINE_bool(glow_hoist_tanh_above_split, glow::flags::HoistTanhAboveSplit,
+            "Hoist tanh ops above split.");
+DEFINE_validator(glow_hoist_tanh_above_split, [](const char *, bool val) {
+  glow::flags::HoistTanhAboveSplit = val;
   return true;
 });
 DEFINE_bool(glow_save_onnxifi_model, glow::onnxifi::flags::SaveModel,

@@ -1328,6 +1328,38 @@ TEST_F(GraphOptz, HoistTransposeAboveTile) {
   checkNumericalEquivalence();
 }
 
+TEST_F(GraphOptz, hoistTanhAboveSplit) {
+  auto *in = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "input", false);
+  F_->createSave("Save_In", in);
+
+  auto *slice0 = F_->createSlice("Slice_0_2", in, {0}, {2});
+  auto *slice1 = F_->createSlice("Slice_2_4", in, {2}, {4});
+  auto *slice2 = F_->createSlice("Slice_4_6", in, {4}, {6});
+
+  auto *tanh0 = F_->createTanh("Tanh_0", slice0);
+  auto *tanh1 = F_->createTanh("Tanh_1", slice1);
+  auto *tanh2 = F_->createTanh("Tanh_2", slice2);
+
+  F_->createSave("Save_0", tanh0);
+  F_->createSave("Save_1", tanh1);
+  F_->createSave("Save_2", tanh2);
+
+  EXPECT_EQ(F_->getNodes().size(), 10);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TanhNodeKind), 3);
+
+  CompilationContext cctx;
+  cctx.optimizationOpts.hoistTanhAboveSplit = true;
+
+  optimizedF_ = optimizeFunctionForTest(F_, {FunctionPassID::HoistCode}, cctx);
+
+  EXPECT_EQ(optimizedF_->getNodes().size(), 8);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TanhNodeKind), 1);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// For example folding Rescale in to Convolution.
 TEST_F(GraphOptz, sinkTransposeBelowRescale) {
   // Inputs.

@@ -1245,11 +1245,84 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+static bool
+gatherNodesForTanhHoisting(Function *F, NodeValue V,
+                           std::unordered_set<SliceNode *> &slices) {
+  bool shouldHoist = false;
+  // Gather all users of the node which are split->tanh.
+  for (auto &N : V.getUsers()) {
+    if (N.getUser()->getParent() != F) {
+      continue;
+    }
+    auto *SN = dyn_cast<SliceNode>(N.getUser());
+    if (!SN) {
+      continue;
+    }
+    // Slice should have no other user than Tanh.
+    if (SN->getNumUsers() != 1) {
+      continue;
+    }
+    auto *TN = dyn_cast<TanhNode>(SN->getUsers().front().getUser());
+    if (!TN) {
+      continue;
+    }
+    slices.insert(SN);
+  }
+
+  if (slices.size() > 1) {
+    // TODO: Add heuristic for this optimization.
+    // 1. Based on number # slice tanh discovered.
+    // 2. Based on the union of slice coverage precentage.
+    shouldHoist = true;
+  }
+
+  return shouldHoist;
+}
+
+// Hoist tanh node above slice nodes.
+// Example:
+//
+// Node -> Slice -> Tanh
+//      -> Slice -> Tanh
+//      -> Slice -> Tanh
+//
+// Will be transformed to
+//
+// Node -> Tanh -> Slice
+//              -> Slice
+//              -> Slice
+static bool runHoistTanhAboveSplit(Function *F, NodeValue V) {
+  bool changed = false;
+  auto *N = V.getNode();
+
+  // Gather all slice nodes
+  std::unordered_set<SliceNode *> sliceNodes;
+  sliceNodes.reserve(V.getNumUsers());
+  bool canHoist = gatherNodesForTanhHoisting(F, V, sliceNodes);
+
+  if (canHoist) {
+    auto *TN = F->createTanh("Tanh_hoisted", N);
+
+    for (auto &SN : sliceNodes) {
+      SN->setNthInput(0, TN);
+      auto *toRemove = dyn_cast<TanhNode>(SN->getUsers().front().getUser());
+      if (!toRemove) {
+        llvm_unreachable("Tanh must be in the pattern");
+      }
+      toRemove->getResult().replaceAllUsesOfWith(SN->getResult());
+      F->eraseNode(toRemove);
+    }
+    changed = true;
+  }
+  return changed;
+}
+
 /// Code Hoisting.
 bool HoistCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
+  std::unordered_set<const Node *> searched;
   // For each node:
   for (auto &N : nodes) {
     auto *node = &N;
@@ -1273,8 +1346,19 @@ bool HoistCode::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
-  }
 
+    if (cctx.optimizationOpts.hoistTanhAboveSplit) {
+      // To reduce the search space, this pass will only search
+      // unsearched input node of the each slice node.
+      if (auto *SN = dyn_cast<SliceNode>(node)) {
+        if (searched.count(SN->getInput().getNode())) {
+          continue;
+        }
+        searched.insert(SN->getInput().getNode());
+        changed |= runHoistTanhAboveSplit(F, SN->getInput());
+      }
+    }
+  }
   return changed;
 }
 
