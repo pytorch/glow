@@ -288,6 +288,10 @@ struct OptimizationOptions {
   /// If true, will sink tanh below concat
   bool sinkTanhBelowConcat{false};
 
+  /// If true, will hoist tanh above split if there are muliple split->tanh from
+  /// the same node.
+  bool hoistTanhAboveSplit{false};
+
   /// Default ctor.
   OptimizationOptions() {
     // By default, always materialize Splats used by ConvolutionNodes, as
@@ -314,6 +318,7 @@ struct OptimizationOptions {
     PRINT_VALUE(enableQuantParamChanges, dump_str)
     PRINT_VALUE(skipConcatMerging, dump_str)
     PRINT_VALUE(sinkTanhBelowConcat, dump_str)
+    PRINT_VALUE(hoistTanhAboveSplit, dump_str)
     return dump_str;
   }
 
