@@ -18,6 +18,7 @@
 #include "glow/Flags/Flags.h"
 #include "glow/Partitioner/PartitionerTypes.h"
 #include "glow/Support/Support.h"
+#include <folly/String.h>
 
 #include <unordered_set>
 
@@ -574,9 +575,12 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << partitions.getGraphMemInfo(subF).deferredConstMemSize << "\n";
     // This may be called before logicalDevices are assigned so check before
     // printing.
-    if (partitions.getLogicalDeviceIDList(subF).size()) {
+    const auto &partitionLogicalDeviceIDs =
+        partitions.getLogicalDeviceIDList(subF);
+
+    if (!partitionLogicalDeviceIDs.empty()) {
       LOG(INFO) << "\t\t LogicalDeviceIDs :\t"
-                << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
+                << folly::join(',', partitionLogicalDeviceIDs) << "\n";
     }
   }
 }
