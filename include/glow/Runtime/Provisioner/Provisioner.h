@@ -158,6 +158,9 @@ public:
   /// otherwise returns an Error.
   Expected<Backend *> getBackend() const;
 
+  /// Dump trace events specific for backends.
+  void dumpBackendSpecificTraceEvents() const;
+
   /// Update the list of available devices.
   void updateAvailableDevices(const std::vector<DeviceManager *> &devices,
                               const std::vector<DeviceIDTy> &mappings) {
