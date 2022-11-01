@@ -1102,6 +1102,13 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
+  BB.newInstr("ThresholdGrad")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Grad", OperandKind::In)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Float, "Threshold")
+      .autoIRGen();
+
   BB.newInstr("Clip")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

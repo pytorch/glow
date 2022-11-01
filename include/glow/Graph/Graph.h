@@ -1405,6 +1405,8 @@ public:
                                  NodeValue indices, int32_t padIdx, bool scale,
                                  bool sparse);
 
+  ThresholdGradNode *createThresholdGrad(llvm::StringRef name, NodeValue grad,
+                                         NodeValue input, float threshold);
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
   /// of the last range. \p lengthsMode and \p avgLength represent meta

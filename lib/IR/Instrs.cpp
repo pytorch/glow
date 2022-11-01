@@ -123,6 +123,14 @@ void ReluGradInst::verify() const {
   verifyRelu(getSrcGrad()->getType(), getDestGrad()->getType());
 }
 
+void ThresholdGradInst::verify() const {
+  assert(getDest()->getType()->size() == getGrad()->getType()->size() &&
+         "Invalid Grad size");
+  assert(getDest()->getType()->size() == getInput()->getType()->size() &&
+         "Invalid Input size");
+  return;
+}
+
 //===----------------------------------------------------------------------===//
 //                       Instruction scratch requirements
 //===----------------------------------------------------------------------===//
