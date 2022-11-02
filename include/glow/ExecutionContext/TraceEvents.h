@@ -157,6 +157,18 @@ struct TraceInfo {
   }
 };
 
+/// Additional data to TraceContext to collect trace events from different
+/// perspectives.
+class TracePerspectiveData {
+  /// Inference request ID to use in viewing trace from requests perspective
+  int requestID_;
+
+public:
+  void setRequestID(int requestID) { requestID_ = requestID; }
+
+  int getRequestID() const { return requestID_; }
+};
+
 /// A context for storing TraceEvents throughout a run (ie. between
 /// partitioned CompiledFunctions).
 class TraceContext {
@@ -172,8 +184,9 @@ class TraceContext {
   /// Lock around traceEvents_.
   std::mutex lock_;
 
-  /// Inference request ID to use in viewing trace from requests perspective
-  int requestID_;
+  /// The TracePerspectiveData structure with additional data to
+  /// TraceContext to collect trace events from different perspectives.
+  TracePerspectiveData tracePerspectiveData_;
 
 public:
   TraceContext(int level) : traceLevel_(level) {}
@@ -225,9 +238,17 @@ public:
   /// threads::getThreadId()).
   void setThreadName(llvm::StringRef name);
 
-  void setRequestID(int requestID_);
+  /// \returns the TracePerspectiveData structure with additional data to
+  /// TraceContext to collect trace events from different perspectives.
+  TracePerspectiveData &getTracePerspectiveData() {
+    return tracePerspectiveData_;
+  }
 
-  int getRequestID() const { return requestID_; }
+  /// Sets the TracePerspectiveData structure with additional data to
+  /// TraceContext to collecting trace events from different perspectives.
+  void setTracePerspectiveData(const TracePerspectiveData &tracePerspective) {
+    tracePerspectiveData_ = tracePerspective;
+  }
 
   /// \returns the list of human readable thread names.
   std::map<int, std::string> &getThreadNames() { return threadNames_; }
