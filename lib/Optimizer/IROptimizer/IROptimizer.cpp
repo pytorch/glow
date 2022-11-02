@@ -230,9 +230,15 @@ static bool hoistDealloc(IRFunction &M) {
       // right before the deallocation.
       continue;
     }
-    // Get the instruction after where.
-    where = &*std::next(where->getIterator());
-    M.moveInstruction(where, curr);
+    // Get the instruction after where or at the end.
+    if (std::next(where->getIterator()) != instrs.end()) {
+      where = &*std::next(where->getIterator());
+      M.moveInstruction(where, curr);
+    } else {
+      // Append at the end.
+      M.removeInstruction(curr);
+      M.pushInstr(curr);
+    }
     changed = true;
   }
   return changed;
