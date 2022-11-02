@@ -1761,6 +1761,14 @@ bool EmbeddingNode::verify() const {
   return verifyEmbedding(getResult(), getWeights(), getIndices());
 }
 
+bool ThresholdGradNode::verify() const {
+  // Checks on inputs/outputs.
+  bool isValid = checkSameType(getGrad(), getInput(), this);
+  isValid &= checkSameShape(getGrad(), getInput(), this);
+  isValid &= checkSameShape(getResult(), getInput(), this);
+  return isValid;
+}
+
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   bool isValid = checkType(getData(), ElemKind::UInt8QTy, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",

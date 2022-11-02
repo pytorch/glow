@@ -859,6 +859,13 @@ int main(int argc, char **argv) {
       .setDocstring("Gathers slices of the outer-most dimension of Weights "
                     "indexed by Indices tensor.");
 
+  BB.newNode("ThresholdGrad")
+      .addInput("Grad")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Threshold")
+      .addResultFromCtorArg()
+      .setDocstring("Threshold backward Node ");
+
   BB.newNode("EmbeddingBag")
       .addInput("Data")
       .addInput("Weights")

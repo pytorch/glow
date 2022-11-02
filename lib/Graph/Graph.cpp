@@ -2606,6 +2606,17 @@ EmbeddingNode *Function::createEmbedding(llvm::StringRef name,
       new EmbeddingNode(name, outTy, weights, indices, padIdx, scale, sparse));
 }
 
+ThresholdGradNode *Function::createThresholdGrad(llvm::StringRef name,
+                                                 NodeValue grad,
+                                                 NodeValue input,
+                                                 float threshold) {
+  auto indDims = input.dims();
+  ShapeVector outDims(indDims.begin(), indDims.end());
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
+
+  return addNode(new ThresholdGradNode(name, outTy, grad, input, threshold));
+}
+
 EmbeddingBagNode *
 Function::createEmbeddingBag(llvm::StringRef name, NodeValue data,
                              NodeValue weights, NodeValue indices,

@@ -2175,6 +2175,11 @@ void BoundInterpreterFunction::fwdReluInst(const ReluInst *) {
   DCHECK(!"Found ReluInst but Relu is lowered on Interpreter");
 }
 
+void BoundInterpreterFunction::fwdThresholdGradInst(const ThresholdGradInst *) {
+  DCHECK(!"Found ThresholdGradInst but ThresholdBackward is lowered on "
+          "Interpreter");
+}
+
 void BoundInterpreterFunction::fwdClipInst(const ClipInst *) {
   DCHECK(!"Found ClipInst but Clip is lowered on Interpreter");
 }
