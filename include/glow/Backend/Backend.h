@@ -232,6 +232,9 @@ public:
 
   virtual size_t getTraceEventDataSize() const { return 0; }
 
+  /// Dump trace events specific for the backend.
+  virtual void dumpBackendSpecificTraceEvents() const {}
+
   /// Called outside/after the end of the optimization pipeline and before code
   /// generation, giving the backend another opportunity to transform the graph
   /// before IRGen. The backend may insert backend and device-specific

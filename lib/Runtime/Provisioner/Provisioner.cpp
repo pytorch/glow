@@ -813,6 +813,14 @@ Expected<Backend *> Provisioner::getBackend() const {
   return backends_.begin()->second.get();
 }
 
+void Provisioner::dumpBackendSpecificTraceEvents() const {
+  if (glow::flags::DumpDebugTraces) {
+    for (auto &backend : backends_) {
+      backend.second->dumpBackendSpecificTraceEvents();
+    }
+  }
+}
+
 Error Provisioner::removeFunction(llvm::StringRef name) {
   std::lock_guard<std::mutex> functionsLock(functionsLock_);
   auto it = activeFunctions_.find(name.str());

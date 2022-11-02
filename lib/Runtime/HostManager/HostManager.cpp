@@ -848,6 +848,9 @@ Error HostManager::clearHost() {
   statsExporterRegistry_->setCounter(kDeviceMemoryAvailable, 0);
   statsExporterRegistry_->setCounter(kDeviceMemoryMax, 0);
 
+  if (glow::flags::DumpDebugTraces) {
+    provisioner_->dumpBackendSpecificTraceEvents();
+  }
   RETURN_ERR(errContainer.get());
 }
 
