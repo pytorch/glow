@@ -84,30 +84,54 @@ public:
                         TransposeParam param, bool isRef) {
 
     PlaceholderBindings &bindings = isRef ? refBindings_ : bindings_;
-    auto *input = mod->createPlaceholder(
-        param.dtype_, {param.batchSize_, param.m_, param.n_}, "input", false);
+    auto *inputA = mod->createPlaceholder(
+        param.dtype_, {param.batchSize_, param.m_, param.n_}, "inputA", false);
+    auto *inputB = mod->createPlaceholder(
+        param.dtype_, {param.batchSize_, param.n_, param.m_}, "inputB", false);
     if (param.dtype_ == ElemKind::Float16Ty) {
-      bindings.allocate(input)->getHandle<float16>().randomize(-1.f, 1.f,
-                                                               mod->getPRNG());
+      bindings.allocate(inputA)->getHandle<float16>().randomize(-1.f, 1.f,
+                                                                mod->getPRNG());
+
+      bindings.allocate(inputB)->getHandle<float16>().randomize(-1.f, 1.f,
+                                                                mod->getPRNG());
+
     } else {
       assert(param.dtype_ == ElemKind::FloatTy);
-      bindings.allocate(input)->getHandle<float>().randomize(-1.f, 1.f,
-                                                             mod->getPRNG());
+      bindings.allocate(inputA)->getHandle<float>().randomize(-1.f, 1.f,
+                                                              mod->getPRNG());
+      bindings.allocate(inputB)->getHandle<float>().randomize(-1.f, 1.f,
+                                                              mod->getPRNG());
     }
-    auto *output = mod->createPlaceholder(
-        param.dtype_, {param.batchSize_, param.m_, param.n_}, "output", false);
+    glow::Placeholder *output;
+    if (param.numLayers_ % 2) {
+      output = mod->createPlaceholder(param.dtype_,
+                                      {param.batchSize_, param.n_, param.m_},
+                                      "output", false);
+
+    } else {
+      output = mod->createPlaceholder(param.dtype_,
+                                      {param.batchSize_, param.m_, param.n_},
+                                      "output", false);
+    }
     bindings.allocate(output);
-    Node *cur = input;
+    Node *cur = inputA;
 
     for (dim_t layer = 0; layer < param.numLayers_; layer++) {
       auto *xp = fn->createTranspose("transpose_" + std::to_string(layer), cur,
                                      {0, 2, 1});
-      auto *ad = fn->createAdd("add_" + std::to_string(layer), cur, xp);
+      Node *ad;
+
+      if (layer % 2) {
+        ad = fn->createAdd("add_" + std::to_string(layer), inputA, xp);
+      } else {
+        ad = fn->createAdd("add_" + std::to_string(layer), inputB, xp);
+      }
       cur = ad;
     }
 
     fn->createSave("save1", cur, output);
-    ::glow::convertPlaceholdersToConstants(fn, bindings, {input, output});
+    ::glow::convertPlaceholdersToConstants(fn, bindings,
+                                           {inputA, inputB, output});
   }
 
   void setupInternal(bool isRef) {
