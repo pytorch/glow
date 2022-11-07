@@ -116,8 +116,12 @@ protected:
 // TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
 #define ENABLED_BACKENDS(...)                                                  \
-  if (!runDisabledTests && !isEnabledBackend({__VA_ARGS__}))                   \
-    GTEST_SKIP();
+  if (!runDisabledTests && !isEnabledBackend({__VA_ARGS__})) {                 \
+    const std::string currentTestName{                                         \
+        ::testing::UnitTest::GetInstance()->current_test_info()->name()};      \
+    GTEST_SKIP() << "Skipping unsupported backend " << getBackendName()        \
+                 << " for test " << currentTestName;                           \
+  }
 
 /// Blacklist of tests for the current backend under test.
 extern std::set<std::string> backendTestBlacklist;
@@ -137,10 +141,13 @@ extern bool useSymmetricRowwiseQuantFC;
 
 /// Helper macro to check the current test against the blacklist.
 #define CHECK_IF_ENABLED()                                                     \
-  if (!runDisabledTests &&                                                     \
-      backendTestBlacklist.count(                                              \
-          ::testing::UnitTest::GetInstance()->current_test_info()->name()))    \
-    GTEST_SKIP();
+  {                                                                            \
+    const std::string currentTestName{                                         \
+        ::testing::UnitTest::GetInstance()->current_test_info()->name()};      \
+    if (!runDisabledTests && backendTestBlacklist.count(currentTestName)) {    \
+      GTEST_SKIP() << "Skipping blocklisted test " << currentTestName;         \
+    }                                                                          \
+  }
 
 class NumericsTest : public BackendTest {
 protected:
