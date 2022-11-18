@@ -16,6 +16,7 @@
 
 #include "glow/Runtime/StatsExporter.h"
 
+#include <memory>
 #include <vector>
 
 namespace glow {
