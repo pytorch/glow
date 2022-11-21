@@ -229,6 +229,7 @@ InstrIterator IRFunction::removeInstruction(glow::Instruction *I) {
   auto result = I->getIterator();
   ++result;
   instrs_.remove(I);
+  I->setParentGroupFusionInstr(nullptr);
   return result;
 }
 

@@ -251,7 +251,7 @@ public:
 
   /// Sets a Parent Group Fusion Instruction
   void setParentGroupFusionInstr(Instruction *instr) {
-    assert((instr->getKind() == Kinded::Kind::FusionGroupInstKind) &&
+    assert((!instr || instr->getKind() == Kinded::Kind::FusionGroupInstKind) &&
            "Not a FusionGroupInstr");
     parentFusionGroupInstr_ = instr;
   }
