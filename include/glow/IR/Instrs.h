@@ -85,6 +85,8 @@ public:
     for (Instruction *instr : instrs) {
       transferOperands(instr);
       instrs_.push_back(instr);
+      assert(!instr->getParentGroupFusionInstr() &&
+             "Instruction should not be part of another fusion");
       instr->setParentGroupFusionInstr(this);
     }
   }
