@@ -283,8 +283,8 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(const Instruction *I) {
     // Check that an instruction never tries to update a constant argument.
     if (opKind != OperandKind::In) {
       if (auto *W = llvm::dyn_cast<WeightVar>(opValue)) {
-        assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
-               "Constant weights cannot be updated");
+        CHECK(W->getMutability() != WeightVar::MutabilityKind::Constant)
+            << "Constant weights cannot be updated: " << W->getName().str();
         (void)W;
       }
     }
@@ -308,8 +308,9 @@ static void LLVM_ATTRIBUTE_UNUSED verifyOperandsAccess(const Instruction *I) {
       // If an operand is used as @out or @inout it cannot be used
       // for anything else.
       // It is OK to use the same operand as input multiple times.
-      assert(opKind == OperandKind::In && nextOpKind == OperandKind::In &&
-             "Conflicting uses of the same operand by the same instruction");
+      CHECK(opKind == OperandKind::In && nextOpKind == OperandKind::In)
+          << "Conflicting uses of the same operand by the same instruction: "
+          << I->getName().str();
     }
   }
 }
@@ -322,16 +323,22 @@ static void verifyLiveness(const IRFunction &M) {
   std::unordered_map<const Value *, bool> liveBuffers;
   for (const auto &I : M.getInstrs()) {
     if (auto *AI = dyn_cast<AllocActivationInst>(&I)) {
-      assert(liveBuffers.find(AI) == liveBuffers.end() &&
-             "Redefinition of an existing allocation");
+      CHECK(liveBuffers.find(AI) == liveBuffers.end())
+          << "Redefinition of an existing allocation: " << AI->getName().str();
       liveBuffers.insert({AI, false});
       continue;
     }
     if (auto *DI = dyn_cast<DeallocActivationInst>(&I)) {
-      assert(llvm::isa<AllocActivationInst>(DI->getSrc()) &&
-             "Only allocations can be deallocated");
-      assert(liveBuffers.find(DI->getSrc()) != liveBuffers.end() &&
-             "Deallocation of an allocation that is not alive");
+      CHECK(llvm::isa<AllocActivationInst>(DI->getSrc()))
+          << "Only allocations can be deallocated: " << DI->getName().str();
+      CHECK(liveBuffers.find(DI->getSrc()) != liveBuffers.end())
+          << "Deallocation of an allocation that is not alive: "
+          << DI->getName().str();
+      CHECK_EQ(dyn_cast<Instruction>(DI->getSrc())->getParentGroupFusionInstr(),
+               DI->getParentGroupFusionInstr())
+          << "Allocation and deallocation should happen in the same fusion "
+             "group: "
+          << DI->getSrc()->getName().str() << " and " << DI->getName().str();
       liveBuffers.erase(DI->getSrc());
       continue;
     }
@@ -343,11 +350,14 @@ static void verifyLiveness(const IRFunction &M) {
     for (const auto &Op : I.getOperands()) {
       if (auto *AI = dyn_cast<AllocActivationInst>(getOrigin(Op.first))) {
         auto entry = liveBuffers.find(AI);
-        assert(entry != liveBuffers.end() &&
-               "Allocation should be alive when it is used");
-        assert((Op.second == OperandKind::Out || entry->second) &&
-               "@in and @inout operands should be initialized before their "
-               "first use");
+        CHECK(entry != liveBuffers.end())
+            << "Allocation should be alive when it is used: "
+            << AI->getName().str() << " in the instruction "
+            << I.getName().str();
+        CHECK(Op.second == OperandKind::Out || entry->second)
+            << "@in and @inout operands should be initialized before their "
+               "first use in "
+            << I.getName().str();
         // Remember that an allocation was initialized.
         if (Op.second != OperandKind::In)
           entry->second = true;
@@ -358,7 +368,8 @@ static void verifyLiveness(const IRFunction &M) {
 
 bool IRFunction::verify() const {
   InstructionNumbering InstrNumbering(*this);
-  assert(!instrs_.empty() && "Instruction list is empty!");
+  CHECK(!instrs_.empty()) << "Instruction list is empty for "
+                          << getName().str();
   llvm::StringSet<> nameSet;
   for (const auto &I : instrs_) {
     I.verifyUseList(InstrNumbering);
@@ -366,20 +377,23 @@ bool IRFunction::verify() const {
     I.verify();
     auto it = nameSet.insert(I.getName());
     (void)it;
-    assert(it.second && "All Instruction and WeightVar names must be unique.");
+    CHECK(it.second) << "All Instruction and WeightVar names must be unique: "
+                     << I.getName().str();
   }
 
   verifyLiveness(*this);
 
   for (auto p : variableMap_) {
     (void)p;
-    assert(p.first->getType() == p.second->getType() &&
-           "Weight and variable must have the same type");
+    CHECK_EQ(p.first->getType(), p.second->getType())
+        << "Weight and variable must have the same type for "
+        << p.first->getName().str() << " and " << p.second->getName().str();
     p.second->verify(*this);
     p.second->verifyUseList(InstrNumbering);
     auto it = nameSet.insert(p.second->getName());
     (void)it;
-    assert(it.second && "All Instruction and WeightVar names must be unique.");
+    CHECK(it.second) << "All Instruction and WeightVar names must be unique: "
+                     << p.second->getName().str();
   }
   return true;
 }
