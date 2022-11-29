@@ -35,6 +35,10 @@ using IRFunctionPassPipeline = PassPipeline<IRFunctionPass>;
 std::unique_ptr<IRFunctionPassPipeline>
 createDefaultIRFunctionOptimizationPipeline();
 
+/// \returns the default, target-independent IR inpection pipeline.
+std::unique_ptr<IRFunctionPassPipeline>
+createDefaultIRFunctionInspectionPipeline();
+
 /// \returns the name of a Pass given its \p passID.
 llvm::StringRef getNameOfPass(IRFunctionPassID passID);
 

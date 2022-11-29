@@ -291,6 +291,12 @@ Backend::getIROptimizationPipeline() const {
   return pipeline;
 }
 
+std::unique_ptr<IRFunctionPassPipeline>
+Backend::getIRInspectionPipeline() const {
+  auto pipeline = createDefaultIRFunctionInspectionPipeline();
+  return pipeline;
+}
+
 bool Backend::runBackendSpecificTransforms(IRFunction *M) const {
   (void)M;
   return false;

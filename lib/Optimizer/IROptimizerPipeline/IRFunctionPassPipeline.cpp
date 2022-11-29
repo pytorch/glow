@@ -96,6 +96,12 @@ createDefaultIRFunctionOptimizationPipeline() {
   };
 
   auto pipeline = glow::make_unique<IRFunctionPassPipeline>(configs);
+  return pipeline;
+}
+
+std::unique_ptr<IRFunctionPassPipeline>
+createDefaultIRFunctionInspectionPipeline() {
+  auto pipeline = glow::make_unique<IRFunctionPassPipeline>();
 
   if (instrumentDebug) {
     // Run debug instrumentation only if necessary.
