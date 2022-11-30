@@ -18,6 +18,7 @@
 
 #include "llvm/ADT/StringRef.h"
 
+#include <memory>
 #include <vector>
 
 namespace glow {
