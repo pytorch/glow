@@ -202,9 +202,14 @@ public:
 
   /// Modify the \p optimizationOpts however desired.
   virtual std::unique_ptr<FunctionPassPipeline> getOptimizationPipeline() const;
-  /// Modify the \p optimizationOpts however desired.
+
+  /// \returns the default IR optimization pipeline.
   virtual std::unique_ptr<IRFunctionPassPipeline>
   getIROptimizationPipeline() const;
+
+  /// \returns the default IR inspection pipeline for debugging and inspection.
+  virtual std::unique_ptr<IRFunctionPassPipeline>
+  getIRInspectionPipeline() const;
 
   /// Run IR transformas specific to the backend. \returns true if the backend
   /// specific changes resulted in changes in the IR.

@@ -1610,21 +1610,33 @@ void optimize(IRFunction &M, bool shouldShareBuffers) {
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   IRFPM.run(&M, cctx);
+
+  auto inspectionPipeline = createDefaultIRFunctionInspectionPipeline();
+  IRFunctionPassManager IRFPMISP("TargetIndependentIRInspectionFPM",
+                                 std::move(inspectionPipeline));
+  IRFPMISP.run(&M, cctx);
 }
 
 void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers) {
   M.verify();
-  auto pipeline = B.getIROptimizationPipeline();
+  auto optimizationPipeline = B.getIROptimizationPipeline();
   if (!shouldShareBuffers) {
-    pipeline->removeAllInstancesOfPass(IRFunctionPassID::ShareBuffers);
+    optimizationPipeline->removeAllInstancesOfPass(
+        IRFunctionPassID::ShareBuffers);
   }
-  IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
-                              std::move(pipeline));
+  IRFunctionPassManager IRFPMOPT("TargetIndependentIROptzFPM",
+                                 std::move(optimizationPipeline));
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   cctx.backend = &B;
-  IRFPM.run(&M, cctx);
+  IRFPMOPT.run(&M, cctx);
+
   B.runBackendSpecificTransforms(&M);
+
+  auto inspectionPipeline = B.getIRInspectionPipeline();
+  IRFunctionPassManager IRFPMISP("TargetIndependentIRInspectionFPM",
+                                 std::move(inspectionPipeline));
+  IRFPMISP.run(&M, cctx);
 }
 
 namespace ir {
