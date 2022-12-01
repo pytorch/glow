@@ -3687,7 +3687,10 @@ void BoundInterpreterFunction::fwdElementBitwiseOrInstImpl(
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
     outW.raw(i) = lhsW.raw(i) | rhsW.raw(i);
+#pragma clang diagnostic pop
   }
 }
 
@@ -3706,7 +3709,10 @@ void BoundInterpreterFunction::fwdElementBitwiseAndInstImpl(
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
     outW.raw(i) = lhsW.raw(i) & rhsW.raw(i);
+#pragma clang diagnostic pop
   }
 }
 
