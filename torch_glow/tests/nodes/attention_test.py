@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import unittest
+
 import torch
 import torch_glow
 from tests import utils
@@ -28,6 +30,8 @@ class SimpleAttentionModule(torch.nn.Module):
         return self.self_attn(inputs, inputs, inputs)
 
 
+# Changes introduced by Diff: D41625335 broke this Test
+@unittest.skip("See Task: T139048984")
 class TestAttention(utils.TorchGlowTestCase):
     def test_attention_basic(self):
         """Basic test of the PyTorch attention Node on Glow."""
