@@ -31,6 +31,7 @@
 #include <cmath>
 #include <numeric>
 #include <random>
+#include <type_traits>
 
 #ifdef WIN32
 #include <corecrt_math_defines.h>
@@ -360,6 +361,22 @@ SumTy add(SumTy a, const uint8_t *row, const uint8_t *data,
 #ifndef MAX
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #endif
+
+// Provides a bitwise `and` that isn't concerned about bools
+template <typename T> T safe_bitwise_and(const T &a, const T &b) {
+  return a & b;
+}
+template <> bool safe_bitwise_and(const bool &a, const bool &b) {
+  return a && b;
+}
+
+// Provides a bitwise `or` that isn't concerned about bools
+template <typename T> T safe_bitwise_or(const T &a, const T &b) {
+  return a | b;
+}
+template <> bool safe_bitwise_or(const bool &a, const bool &b) {
+  return a || b;
+}
 
 //===----------------------------------------------------------------------===//
 //                       Convolution
@@ -3687,10 +3704,7 @@ void BoundInterpreterFunction::fwdElementBitwiseOrInstImpl(
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
-    outW.raw(i) = lhsW.raw(i) | rhsW.raw(i);
-#pragma clang diagnostic pop
+    outW.raw(i) = safe_bitwise_or(lhsW.raw(i), rhsW.raw(i));
   }
 }
 
@@ -3709,10 +3723,7 @@ void BoundInterpreterFunction::fwdElementBitwiseAndInstImpl(
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
   auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
   for (size_t i = 0, e = outW.size(); i < e; i++) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wbitwise-instead-of-logical"
-    outW.raw(i) = lhsW.raw(i) & rhsW.raw(i);
-#pragma clang diagnostic pop
+    outW.raw(i) = safe_bitwise_and(lhsW.raw(i), rhsW.raw(i));
   }
 }
 
