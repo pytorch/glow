@@ -810,23 +810,23 @@ int run() {
           startTime = result.cardStartTime;
         }
 
+        auto eventTag = threads::getThreadId();
         TraceContext *traceContext = nullptr;
         if (enableGlowTrace && (numInferencesIssued >= warmupRequestsOpt)) {
           ctx->setTraceContext(
               glow::make_unique<TraceContext>(TraceLevel::STANDARD));
           traceContext = ctx->getTraceContext();
+          traceContext->getTracePerspectiveData().setRequestID(
+              numInferencesIssued);
           if (glow::flags::useInferencePerspectiveTrace) {
             traceContext->setThreadName(numInferencesIssued,
                                         "Inference Request");
-            traceContext->setRequestID(numInferencesIssued);
+            eventTag = traceContext->getTracePerspectiveData().getRequestID();
           } else {
             traceContext->setThreadName("Request Thread");
           }
         }
-        auto eventTag = threads::getThreadId();
-        if (enableGlowTrace && glow::flags::useInferencePerspectiveTrace) {
-          eventTag = traceContext->getRequestID();
-        }
+
         TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
                               "Inference request", eventTag);
         TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,

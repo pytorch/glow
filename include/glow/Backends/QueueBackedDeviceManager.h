@@ -78,9 +78,11 @@ public:
 
     if (glow::flags::useInferencePerspectiveTrace) {
       auto *traceContext = context.get()->getTraceContext();
-      auto requestID = traceContext->getRequestID();
-      TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
-                            "Acquiring deviceManager thread", requestID);
+      if (traceContext) {
+        auto requestID = traceContext->getTracePerspectiveData().getRequestID();
+        TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
+                              "Acquiring deviceManager thread", requestID);
+      }
     }
 
     workThread_.submit([this, id, functionName = std::move(functionName),
@@ -88,9 +90,12 @@ public:
                         callback = std::move(callback)]() mutable {
       if (glow::flags::useInferencePerspectiveTrace) {
         auto *traceContext = context.get()->getTraceContext();
-        auto requestID = traceContext->getRequestID();
-        TRACE_EVENT_TAG_END(traceContext, TraceLevel::RUNTIME,
-                            "Acquiring deviceManager thread", requestID);
+        if (traceContext) {
+          auto requestID =
+              traceContext->getTracePerspectiveData().getRequestID();
+          TRACE_EVENT_TAG_END(traceContext, TraceLevel::RUNTIME,
+                              "Acquiring deviceManager thread", requestID);
+        }
       }
 
       runFunctionImpl(id, std::move(functionName), std::move(context),

@@ -964,8 +964,8 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
   auto *traceContext = context->getTraceContext();
   size_t eventTag = threads::getThreadId();
-  if (glow::flags::useInferencePerspectiveTrace) {
-    eventTag = context->getTraceContext()->getRequestID();
+  if (traceContext && glow::flags::useInferencePerspectiveTrace) {
+    eventTag = traceContext->getTracePerspectiveData().getRequestID();
   }
   TRACE_EVENT_SCOPE_TAG_NAMED(traceContext, TraceLevel::RUNTIME,
                               "HostManager::runNetwork", eventTag, traceBlock);

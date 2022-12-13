@@ -84,19 +84,19 @@ void ThreadPoolExecutor::run(const DAGNode *root,
                              RunIdentifierTy runId, ResultCBTy cb) {
   DCHECK(cb != nullptr);
 
-  size_t eventTag = threads::getThreadId();
-  if (glow::flags::useInferencePerspectiveTrace) {
-    eventTag = context->getTraceContext()->getRequestID();
-  }
   auto *traceContext = context->getTraceContext();
+  size_t eventTag = threads::getThreadId();
+  if (traceContext && glow::flags::useInferencePerspectiveTrace) {
+    eventTag = traceContext->getTracePerspectiveData().getRequestID();
+  }
 
   TRACE_EVENT_TAG_BEGIN(traceContext, TraceLevel::RUNTIME,
                         "ThreadPoolExecutor::run", eventTag);
-  if (context->getTraceContext()) {
+  if (traceContext) {
     auto tid = threads::getThreadId();
-    if (!context->getTraceContext()->getThreadNames().count(tid) &
+    if (!traceContext->getThreadNames().count(tid) &
         !glow::flags::useInferencePerspectiveTrace) {
-      context->getTraceContext()->setThreadName(tid, "ThreadPoolExecutor");
+      traceContext->setThreadName(tid, "ThreadPoolExecutor");
     }
   }
 
@@ -147,8 +147,9 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
                                         DAGNode *node) {
   std::string traceScopeStr;
-  bool tracingEnabled =
-      !!executionState->getRawResultContextPtr()->getTraceContext();
+  auto traceContext =
+      executionState->getRawResultContextPtr()->getTraceContext();
+  bool tracingEnabled = !!traceContext;
   if (tracingEnabled) {
     traceScopeStr = llvm::formatv("ThreadPoolExecutor::executeDAGNode {0:x}",
                                   executionState->getRawResultContextPtr())
@@ -156,10 +157,8 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   }
 
   size_t eventTag = threads::getThreadId();
-  if (glow::flags::useInferencePerspectiveTrace) {
-    eventTag = executionState->getRawResultContextPtr()
-                   ->getTraceContext()
-                   ->getRequestID();
+  if (tracingEnabled && glow::flags::useInferencePerspectiveTrace) {
+    eventTag = traceContext->getTracePerspectiveData().getRequestID();
   }
 
   TRACE_EVENT_SCOPE_TAG(
@@ -176,8 +175,9 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   // Get the PlaceholderBindings containing all of the inputs for the node.
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);
-  if (glow::flags::useInferencePerspectiveTrace) {
-    nodeCtx->getTraceContext()->setRequestID(eventTag);
+  if (tracingEnabled) {
+    nodeCtx->getTraceContext()->setTracePerspectiveData(
+        traceContext->getTracePerspectiveData());
   }
   // Trace child node creation (to be able to identify function execution
   // origin).
@@ -250,8 +250,8 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     std::unique_ptr<ExecutionContext> ctx, const DAGNode *node) {
   TraceContext *traceContext = ctx->getTraceContext();
   size_t eventTag = threads::getThreadId();
-  if (glow::flags::useInferencePerspectiveTrace) {
-    eventTag = traceContext->getRequestID();
+  if (traceContext && glow::flags::useInferencePerspectiveTrace) {
+    eventTag = traceContext->getTracePerspectiveData().getRequestID();
   }
   if (traceContext) {
     TRACE_EVENT_TAG_BEGIN(

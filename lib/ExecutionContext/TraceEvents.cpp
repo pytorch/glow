@@ -191,7 +191,6 @@ void TraceContext::setThreadName(int tid, llvm::StringRef name) {
 void TraceContext::setThreadName(llvm::StringRef name) {
   setThreadName(threads::getThreadId(), name);
 }
-void TraceContext::setRequestID(int requestID) { requestID_ = requestID; }
 
 void TraceContext::dump(llvm::StringRef filename,
                         const std::string &processName) {
