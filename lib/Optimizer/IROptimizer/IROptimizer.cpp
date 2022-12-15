@@ -1260,7 +1260,7 @@ static bool eliminateDeadStores(IRFunction &M) {
   for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
     auto *I = &*it;
     if (isa<DeallocActivationInst>(I) || isa<AllocActivationInst>(I) ||
-        isa<TensorViewInst>(I)) {
+        isa<TensorViewInst>(I) || I->isFused()) {
       continue;
     }
     size_t numMutatedOperands = 0;
