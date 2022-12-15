@@ -78,6 +78,11 @@ static bool shouldDeleteNode(Node *N) {
     return false;
   }
 
+  // Don't delete fused nodes.
+  if (N->isFused()) {
+    return false;
+  }
+
   return true;
 }
 
