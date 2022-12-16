@@ -133,6 +133,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     // TODO: subgraphInst should be in scheduled order.
     for (auto &n : subgraph) {
       auto inst = getNodeToIR(n);
+      assert(inst != nullptr &&
+             "Instruction within Fusion Group has not been generated.\n");
       subgraphInst.push_back(inst);
     }
     auto FGI = builder_.createFusionGroupInst(FGN->getName(), subgraphInst);
