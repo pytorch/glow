@@ -253,7 +253,7 @@ public:
 
               // Args to be used for calling the specialized function.
               llvm::SmallVector<llvm::Value *, 16> argsForInstr;
-              for (auto &arg : CI->arg_operands()) {
+              for (auto &arg : CI->args()) {
                 argsForInstr.push_back(arg);
               }
 
@@ -306,15 +306,14 @@ private:
       llvm::Value *argFormat = nullptr;
       auto type = op.get()->getType();
 
-      // Printing interger values with %d symbol.
+      // Printing integer values with %d symbol.
       if (type->isIntegerTy() ||
-          (type->isPointerTy() && dyn_cast<llvm::PointerType>(type)
-                                      ->getElementType()
-                                      ->isIntegerTy())) {
+          (type->isPointerTy() &&
+           type->getPointerElementType()->isIntegerTy())) {
         auto *value = op.get();
         // If arg is a pointer to integer value get value and print it.
         if (type->isPointerTy()) {
-          value = builder.CreateLoad(op.get());
+          value = builder.CreateLoad(type->getPointerElementType(), op.get());
         }
 
         std::string quant = "\targ: %";
@@ -329,8 +328,8 @@ private:
 
       // Processing pointers to structure values.
       if (type->isPointerTy()) {
-        auto *structType = dyn_cast<llvm::StructType>(
-            dyn_cast<llvm::PointerType>(type)->getElementType());
+        auto *structType =
+            dyn_cast<llvm::StructType>(type->getPointerElementType());
         if (structType) {
           std::string printStructFuncName = "pretty_print_";
           llvm::StringRef structName;

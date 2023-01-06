@@ -567,7 +567,8 @@ void LLVMIRGen::emitArrayStore(llvm::IRBuilder<> &builder,
     assert(vals[idx]->getType()->getPointerTo() == basePtr->getType() &&
            "Mismatch between pointer and value type!");
     auto *storeIdx = builder.getInt32(idx + baseIdx);
-    auto *storeAddr = builder.CreateGEP(basePtr, storeIdx);
+    auto *storeAddr = builder.CreateGEP(
+        basePtr->getType()->getPointerElementType(), basePtr, storeIdx);
     builder.CreateStore(vals[idx], storeAddr);
   }
 }
@@ -3628,13 +3629,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     // Emit opAddr address as uint8_t** starting from offset 0.
     auto *opAddrPtr =
-        builder.CreateGEP(opInfoPtr, llvm::ConstantInt::get(intTy, 0));
+        builder.CreateGEP(opInfoPtr->getType()->getPointerElementType(),
+                          opInfoPtr, llvm::ConstantInt::get(intTy, 0));
     opAddrPtr = builder.CreateBitCast(opAddrPtr,
                                       builder.getInt8PtrTy()->getPointerTo());
 
     // Emit opSize address as int* starting from offset opNum * sizeof(int64_t).
     auto *opSizePtr = builder.CreateGEP(
-        opInfoPtr, llvm::ConstantInt::get(intTy, opNum * sizeof(int64_t)));
+        opInfoPtr->getType()->getPointerElementType(), opInfoPtr,
+        llvm::ConstantInt::get(intTy, opNum * sizeof(int64_t)));
     opSizePtr = builder.CreateBitCast(opSizePtr, intTy->getPointerTo());
 
     // Generate instrumentation.
@@ -3885,13 +3888,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     // Emit opAddr address as uint8_t** starting from offset 0.
     auto *opAddrPtr =
-        builder.CreateGEP(opInfoPtr, llvm::ConstantInt::get(intTy, 0));
+        builder.CreateGEP(opInfoPtr->getType()->getPointerElementType(),
+                          opInfoPtr, llvm::ConstantInt::get(intTy, 0));
     opAddrPtr = builder.CreateBitCast(opAddrPtr,
                                       builder.getInt8PtrTy()->getPointerTo());
 
     // Emit opSize address as int* starting from offset opNum * sizeof(int64_t).
     auto *opSizePtr = builder.CreateGEP(
-        opInfoPtr, llvm::ConstantInt::get(intTy, opNum * sizeof(int64_t)));
+        opInfoPtr->getType()->getPointerElementType(), opInfoPtr,
+        llvm::ConstantInt::get(intTy, opNum * sizeof(int64_t)));
     opSizePtr = builder.CreateBitCast(opSizePtr, intTy->getPointerTo());
 
     // Operands addresses and sizes.
