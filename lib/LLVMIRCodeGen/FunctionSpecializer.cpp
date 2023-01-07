@@ -129,7 +129,7 @@ class FunctionSpecializer {
     // quantized buffers, because this is likely to significantly increase the
     // code size without any big performance benefits.
     if (arg->getType()->isPointerTy()) {
-      auto elemTy = cast<llvm::PointerType>(arg->getType())->getElementType();
+      auto elemTy = arg->getType()->getPointerElementType();
       // Bail if it is an FP buffer.
       if (elemTy->isFloatTy()) {
         return false;
@@ -287,7 +287,7 @@ public:
     // Check that all arguments are constants.
     // Form the set of arguments to be specialized.
     unsigned argIdx = 0;
-    for (auto &arg : call->arg_operands()) {
+    for (auto &arg : call->args()) {
       auto curArgIdx = argIdx++;
 
       if (!shouldSpecializeParameter(arg, curArgIdx, callee)) {
@@ -389,8 +389,7 @@ private:
       // We can compute the hash this way, because these arguments are LLVM
       // constants which are uniqued. Therefore, the address of a constant is
       // its unique representation.
-      for (unsigned idx = 0, e = key.call_->getNumArgOperands(); idx < e;
-           ++idx) {
+      for (unsigned idx = 0, e = key.call_->arg_size(); idx < e; ++idx) {
         if (isArgToBeSpecialized(key.argsToBeSpecialized_, idx)) {
           hash = llvm::hash_combine(
               hash, getConstantValue(key.call_->getArgOperand(idx)));
@@ -408,8 +407,7 @@ private:
         return false;
       if (lhs.argsToBeSpecialized_ != rhs.argsToBeSpecialized_)
         return false;
-      for (unsigned idx = 0, e = lhs.call_->getNumArgOperands(); idx < e;
-           ++idx) {
+      for (unsigned idx = 0, e = lhs.call_->arg_size(); idx < e; ++idx) {
         if (isArgToBeSpecialized(lhs.argsToBeSpecialized_, idx)) {
           if (getConstantValue(lhs.call_->getArgOperand(idx)) !=
               getConstantValue(rhs.call_->getArgOperand(idx)))
