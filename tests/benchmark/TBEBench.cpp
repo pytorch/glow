@@ -495,16 +495,17 @@ int main(int argc, char *argv[]) {
   for (auto param : params) {
     runHeader = std::string(strFormat(
         "_,benchName,_,batchSize,numIndicesPerBatchMin:numIndicesPerBatchMax,"
-        "numIndicesPerBatchPad,numTableEntries,numElementsPerRow,numReps,"
-        "numAsyncLaunches,numTBENodes,weighted,backendStr,dtype,fuseDtype"));
+        "numIndicesPerBatchPad,numTableEntries,numTables,numElementsPerRow,"
+        "numReps,numAsyncLaunches,numTBENodes,weighted,backendStr,dtype,"
+        "fuseDtype"));
     runPrefix = std::string(strFormat(
-        "SW,%zu,%zu:%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s",
+        "TBEBench,SW,%zu,%zu:%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s",
         (size_t)param.batchSize_, (size_t)param.numIndicesPerBatchMin_,
         (size_t)param.numIndicesPerBatchMax_,
         (size_t)param.numIndicesPerBatchPad_, (size_t)param.numTableEntries_,
-        (size_t)param.numElementsPerRow_, (size_t)param.numReps_,
-        (size_t)param.numAsyncLaunches_, (size_t)param.numTBENodes_, argv[9],
-        argv[10], argv[11], argv[12]));
+        (size_t)param.numTables_, (size_t)param.numElementsPerRow_,
+        (size_t)param.numReps_, (size_t)param.numAsyncLaunches_,
+        (size_t)param.numTBENodes_, argv[9], argv[10], argv[11], argv[12]));
 
     TBEBench b(param);
 
