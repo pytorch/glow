@@ -609,6 +609,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Sub");
 
+  BB.newInstr("ElementRsubConst")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("RHS", OperandKind::In)
+      .addMember(MemberType::Float, "LHS")
+      .inplaceOperand({"Dest", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "RHS"})
+      .autoIRGen("RsubConst");
+
   BB.newInstr("ElementMul")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)

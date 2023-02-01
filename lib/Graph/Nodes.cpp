@@ -1560,6 +1560,10 @@ VERIFY_ARITHMETIC(Min);
 VERIFY_ARITHMETIC(Pow);
 #undef VERIFY_ARITHMETIC
 
+bool RsubConstNode::verify() const {
+  return checkSameShape(getRHS(), getResult(), this);
+}
+
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   bool NODE_NAME_##Node::verify() const {                                      \
     bool isValid = verifyInputAndGradInputTypes(                               \
