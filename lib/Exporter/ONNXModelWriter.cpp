@@ -2762,6 +2762,8 @@ DEF_UNSUPPORTED_NODE(SigmoidCrossEntropyWithLogits)
 DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)
 DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProductGrad)
+// Custom nodes.
+DEF_UNSUPPORTED_NODE(RsubConst)
 
 // Include backend-specific ONNX model writers.
 #include "glow/ONNXModelWriterIncludes.h"

@@ -3440,6 +3440,12 @@ void BoundInterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
                          I->getDest()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdElementRsubConstInst(
+    const ElementRsubConstInst * /*unused*/) {
+  llvm_unreachable(
+      "RsubConstInst instruction not supported on Inrerpretter backend\n");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdElementMulInstArithmeticImpl(
     const ElementMulInst *I) {
