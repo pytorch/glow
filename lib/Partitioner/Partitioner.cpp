@@ -1504,9 +1504,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
 
   std::vector<std::string> pairSLSWith;
-  folly::split<char, std::string, std::string>(
-      ',', cctx.optimizationOpts.sparseNNPartitioningPairSLSWith, pairSLSWith,
-      /*ignoreEmpty*/ true);
+  folly::split(',', cctx.optimizationOpts.sparseNNPartitioningPairSLSWith,
+               pairSLSWith,
+               /*ignoreEmpty*/ true);
   if (cctx.optimizationOpts.sparseNNPartitioningPairTileWithSLS) {
     pairSLSWith.emplace_back("Tile");
   }
