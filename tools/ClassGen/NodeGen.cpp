@@ -432,6 +432,13 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs Sub on the LHS and RHS operands.");
 
+  BB.newNode("RsubConst")
+      .addInput("RHS")
+      .addMember(MemberType::Float, "LHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs reverse Sub on the const LHS and RHS operands.");
+
   BB.newNode("Div")
       .addInput("LHS")
       .addInput("RHS")

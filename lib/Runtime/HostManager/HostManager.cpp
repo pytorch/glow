@@ -189,9 +189,8 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   exportMemoryCounters();
   if (flags::AvailableDevices.length()) {
     std::vector<unsigned> devices;
-    folly::split<char, std::string, unsigned>(',', flags::AvailableDevices,
-                                              devices,
-                                              /* ignoreEmpty */ true);
+    folly::split(',', flags::AvailableDevices, devices,
+                 /* ignoreEmpty */ true);
     std::vector<runtime::DeviceIDTy> convertedDevs(devices.begin(),
                                                    devices.end());
     setAvailableDevices(convertedDevs);

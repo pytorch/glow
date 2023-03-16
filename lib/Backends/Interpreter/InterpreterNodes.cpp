@@ -2227,6 +2227,10 @@ void BoundInterpreterFunction::fwdSigmoidInst(const SigmoidInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdSigmoidGradInst(const SigmoidGradInst *) {
+  llvm_unreachable("SigmoidGrad instruction is not supported yet");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -3438,6 +3442,12 @@ void BoundInterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
 
   dispatchArithmeticImpl(fwdElementSubInstArithmeticImpl,
                          I->getDest()->getElementType(), I);
+}
+
+void BoundInterpreterFunction::fwdElementRsubConstInst(
+    const ElementRsubConstInst * /*unused*/) {
+  llvm_unreachable(
+      "RsubConstInst instruction not supported on Inrerpretter backend\n");
 }
 
 template <typename ElemTy>
