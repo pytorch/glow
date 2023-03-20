@@ -178,7 +178,7 @@ public:
           ElemKind::Int32ITy, {numTables + 1}, "weightsOffsets", false);
       for (int i = 0; i < numTables + 1; i++) {
         weightsOffsetsReal.getHandle<int32_t>().raw(i) =
-            i * param.numElementsPerRow_;
+            i * param.numTableEntries_ * numTotalColumns;
       }
       bindings_.insert(weightsOffsets, std::move(weightsOffsetsReal));
 
