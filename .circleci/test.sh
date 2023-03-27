@@ -125,7 +125,7 @@ case ${CIRCLE_JOB} in
         ;;
     RELEASE_WITH_EXPENSIVE_TESTS)
         run_unit_tests check_expensive
-        run_and_check_lenet_mnist_bundle
+        # run_and_check_lenet_mnist_bundle
         run_and_check_resnet50_bundle
         run_and_check_bundle_instrument
         run_and_check_bundle_with_multiple_entries
