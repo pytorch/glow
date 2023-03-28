@@ -1132,6 +1132,20 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("NanToNum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Float, "Nan")
+      .addMember(MemberType::Float, "PosInf")
+      .addMember(MemberType::Float, "NegInf")
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

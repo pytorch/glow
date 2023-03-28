@@ -2231,6 +2231,10 @@ void BoundInterpreterFunction::fwdSigmoidGradInst(const SigmoidGradInst *) {
   llvm_unreachable("SigmoidGrad instruction is not supported yet");
 }
 
+void BoundInterpreterFunction::fwdNanToNumInst(const NanToNumInst *) {
+  llvm_unreachable("NanToNum instruction is not supported yet");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   staticAssertFloatingPointType(ElemTy);
