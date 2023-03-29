@@ -1084,6 +1084,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"PermuteList", "ElemKind::Int64ITy"});
 
+  BB.newInstr("IndexAdd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Index", OperandKind::In)
+      .addOperand("Source", OperandKind::In)
+      .addMember(MemberType::Int64, "Dim")
+      .addMember(MemberType::Float, "Alpha")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Input"});
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

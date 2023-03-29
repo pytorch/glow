@@ -1120,6 +1120,17 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Permute pooled embeddings");
 
+  BB.newNode("IndexAdd")
+      .addInput("Input")
+      .addInput("Index")
+      .addInput("Source")
+      .addMember(MemberType::Int64, "Dim")
+      .addMember(MemberType::Float, "Alpha")
+      .addResultFromCtorArg()
+      .setDocstring("IndexAdd accumulates the elements of alpha times source "
+                    "into the input tensor by adding to the indices in the   "
+                    "order given in index.");
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//
