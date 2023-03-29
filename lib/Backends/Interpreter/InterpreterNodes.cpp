@@ -6722,6 +6722,17 @@ void BoundInterpreterFunction::fwdPermutedPooledEmbeddingsInstImpl(
   }
 }
 
+void BoundInterpreterFunction::fwdIndexAddInst(glow::IndexAddInst const *I) {
+  dispatchFloatingPointAndIndexImpl(fwdIndexAddInstImpl,
+                                    I->getInput()->getElementType(),
+                                    I->getIndex()->getElementType(), I);
+}
+
+template <typename ElemTy, typename IndexTy>
+void BoundInterpreterFunction::fwdIndexAddInstImpl(glow::IndexAddInst const *) {
+  llvm_unreachable("not yet implemented");
+}
+
 #define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
   switch (elemTy) {                                                            \
   case ElemKind::FloatTy:                                                      \
