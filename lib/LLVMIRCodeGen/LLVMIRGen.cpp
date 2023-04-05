@@ -641,6 +641,10 @@ llvm::Value *LLVMIRGen::emitConstF32(llvm::IRBuilder<> &builder, float val) {
   return llvm::ConstantFP::get(llvm::Type::getFloatTy(getLLVMContext()), val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI64(llvm::IRBuilder<> &builder, int64_t val) {
+  return builder.getInt64(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
   return builder.getInt32(val);
 }
