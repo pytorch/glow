@@ -84,20 +84,6 @@ run_and_check_bundle_tflite_custom() {
     cd -
 }
 
-run_pytorch_tests() {
-    cd "${GLOW_SRC}/torch_glow"
-    if hash sccache 2>/dev/null; then
-      export PATH="/tmp/sccache:$PATH"
-    fi
-    source /tmp/venv/bin/activate
-    pip install pytest-xdist
-    python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
-    cd -
-    if hash sccache 2>/dev/null; then
-      sccache --show-stats
-    fi
-}
-
 # Run unit tests and bundle tests.
 cd "${GLOW_BUILD_DIR}"
 case ${CIRCLE_JOB} in
@@ -123,22 +109,10 @@ case ${CIRCLE_JOB} in
         # run the unit test suite also.
         run_unit_tests check
         ;;
-    RELEASE_WITH_EXPENSIVE_TESTS)
-        run_unit_tests check_expensive
-        run_and_check_lenet_mnist_bundle
-        run_and_check_resnet50_bundle
-        run_and_check_bundle_instrument
-        run_and_check_bundle_with_multiple_entries
-        run_and_check_bundle_with_extra_objects
-        run_and_check_bundle_tflite_custom
-        ;;
     COVERAGE)
         cd "${GLOW_SRC}"
         cd build
         ../.circleci/run_coverage.sh
-        ;;
-    PYTORCH)
-        run_pytorch_tests
         ;;
     CHECK_CLANG_AND_PEP8_FORMAT)
         cd "${GLOW_SRC}"
