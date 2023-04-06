@@ -1566,6 +1566,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::String, "OperatorOptions")
       .autoVerify(VerifyKind::NoVerify);
 
+  /// Input(s) will be added in backend specific function
+  /// (Backend::generateInst())
+  BB.newInstr("SumWithZeroPadding")
+      .addOperand("Dest", OperandKind::Out)
+      .autoVerify(VerifyKind::NoVerify);
   //===--------------------------------------------------------------------===//
   //                Region of Interest (ROI)
   //===--------------------------------------------------------------------===//
