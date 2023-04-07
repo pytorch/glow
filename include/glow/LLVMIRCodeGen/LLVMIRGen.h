@@ -210,6 +210,8 @@ protected:
                                      const glow::Value *val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstF32(llvm::IRBuilder<> &builder, float val);
+  /// Generates LLVM IR that materializes the constant int64 \p val.
+  llvm::Value *emitConstI64(llvm::IRBuilder<> &builder, int64_t val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstI32(llvm::IRBuilder<> &builder, int32_t val);
   /// Generates LLVM IR that materializes the constant \p val.
