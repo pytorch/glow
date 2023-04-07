@@ -8647,3 +8647,9 @@ void BoundInterpreterFunction::fwdExternalFunctionCallInst(
     glow::ExternalFunctionCallInst const *) {
   LOG(FATAL) << "ExternalFunctionCallInst is not supported yet";
 }
+
+void BoundInterpreterFunction::fwdSumWithZeroPaddingInst(
+    const SumWithZeroPaddingInst *) {
+
+  llvm_unreachable("SumWithZeroPadding instruction is not supported yet");
+}
