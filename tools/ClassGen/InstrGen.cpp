@@ -1347,6 +1347,13 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Values", "LabelValues"})
       .autoIRGen();
 
+  BB.newInstr("Pad")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Pad")
+      .addMember(MemberType::Unsigned, "PaddingMode")
+      .addMember(MemberType::Float, "Value")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//

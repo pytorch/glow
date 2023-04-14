@@ -2235,6 +2235,10 @@ void BoundInterpreterFunction::fwdNanToNumInst(const NanToNumInst *) {
   llvm_unreachable("NanToNum instruction is not supported yet");
 }
 
+void BoundInterpreterFunction::fwdPadInst(const PadInst *) {
+  llvm_unreachable("Pad instruction is not supported yet");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   staticAssertFloatingPointType(ElemTy);
