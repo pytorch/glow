@@ -63,8 +63,20 @@ void ReproLiteLib::loadFromAFG() {
     while (std::getline(tokenizer, token, ':')) {
       tokens.push_back(token);
     }
-    assert(tokens.size() == 2);
-    config_[tokens[0]] = tokens[1];
+    int count = 0;
+    std::string rhs;
+    for (auto token : tokens) {
+      if (count == 0) {
+        count++;
+        continue;
+      } else if (count == 1) {
+        count++;
+      } else if (count == 2) {
+        rhs += ":";
+      }
+      rhs += token;
+    }
+    config_[tokens[0]] = rhs;
   }
   configFile.close();
   std::ifstream fin(weightsPathOpt_, std::ios::binary);
