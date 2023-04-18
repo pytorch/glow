@@ -17,11 +17,12 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
+#include "include/glow/Base/Type.h"
 #include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
-#define DATA_FILE 16
+#define DATA_FILE 19
 #define DEVICE_ID (DATA_FILE + 1)
 
 /*
@@ -65,6 +66,9 @@ struct TBEParam {
   bool addClip_;
   ElemKind fusedDtype_;
   ElemKind dtype_;
+  ElemKind ttype_;
+  ElemKind otype_;
+  ElemKind itype_;
 };
 
 class TBEBench : public Benchmark {
@@ -172,15 +176,28 @@ public:
       bindings_.insert(dimOffset, std::move(dimOffsetVal));
 
       // Create weightOffsets
-      Tensor weightsOffsetsReal(ElemKind::Int32ITy, {numTables + 1});
+      Placeholder *weightsOffsets;
+      if (param.ttype_ == ElemKind::Int32ITy) {
+        Tensor weightsOffsetsReal(ElemKind::Int32ITy, {numTables + 1});
 
-      auto weightsOffsets = mod->createPlaceholder(
-          ElemKind::Int32ITy, {numTables + 1}, "weightsOffsets", false);
-      for (int i = 0; i < numTables + 1; i++) {
-        weightsOffsetsReal.getHandle<int32_t>().raw(i) =
-            i * param.numTableEntries_ * numTotalColumns;
+        weightsOffsets = mod->createPlaceholder(
+            ElemKind::Int32ITy, {numTables + 1}, "weightsOffsets", false);
+        for (int i = 0; i < numTables + 1; i++) {
+          weightsOffsetsReal.getHandle<int32_t>().raw(i) =
+              i * param.numTableEntries_ * numTotalColumns;
+        }
+        bindings_.insert(weightsOffsets, std::move(weightsOffsetsReal));
+      } else {
+        Tensor weightsOffsetsReal(ElemKind::Int64ITy, {numTables + 1});
+
+        weightsOffsets = mod->createPlaceholder(
+            ElemKind::Int64ITy, {numTables + 1}, "weightsOffsets", false);
+        for (int i = 0; i < numTables + 1; i++) {
+          weightsOffsetsReal.getHandle<int64_t>().raw(i) =
+              i * param.numTableEntries_ * numTotalColumns;
+        }
+        bindings_.insert(weightsOffsets, std::move(weightsOffsetsReal));
       }
-      bindings_.insert(weightsOffsets, std::move(weightsOffsetsReal));
 
       // Create weightsTysTensorReal
       Tensor weightsTysTensorReal(ElemKind::UInt8ITy, {numTables});
@@ -211,86 +228,160 @@ public:
 
       // Create lengths and offsets
       // lengths are used to populate offsets values
-      auto *lengths =
-          mod->createPlaceholder(ElemKind::Int32ITy, {numTables * batchSize},
-                                 "lengths" + std::to_string(layer),
-                                 /* isTrainable */ false);
-      auto *offsets = mod->createPlaceholder(
-          ElemKind::Int32ITy, {numTables * batchSize + 1}, "offsets",
-          /* isTrainable */ false);
-
-      auto lengthsHandle = bindings_.allocate(lengths)->getHandle<int32_t>();
-      auto offsetsHandle = bindings_.allocate(offsets)->getHandle<int32_t>();
-
+      Placeholder *offsets;
+      Placeholder *lengths =
+          mod->createPlaceholder(ElemKind::Int64ITy, {numTables * batchSize},
+                                 "lengths" + std::to_string(layer), false);
+      auto lengthsHandle = bindings_.allocate(lengths)->getHandle<int64_t>();
       dim_t lengthsSum = 0;
-      if (extern_data) {
-        int32_t cur, pre, base = 0;
+      if (param.otype_ == ElemKind::Int32ITy) {
 
-        for (size_t j = 0, e = offsetsHandle.size(); j < e; j++) {
-          cur = off_tensor[j].item<int>();
-          if (j % batchSize == 0) {
-            base = cur;
+        offsets = mod->createPlaceholder(
+            ElemKind::Int32ITy, {numTables * batchSize + 1}, "offsets", false);
+        auto offsetsHandle = bindings_.allocate(offsets)->getHandle<int32_t>();
+
+        if (extern_data) {
+          int32_t cur, pre, base = 0;
+
+          for (size_t j = 0, e = offsetsHandle.size(); j < e; j++) {
+            cur = off_tensor[j].item<int>();
+            if (j % batchSize == 0) {
+              base = cur;
+            }
+            offsetsHandle.raw(j) = cur - base;
+            if (j > 0) {
+              lengthsHandle.raw(j) = cur - pre;
+            }
+            pre = cur;
           }
-          offsetsHandle.raw(j) = cur - base;
-          if (j > 0) {
-            lengthsHandle.raw(j) = cur - pre;
+
+          lengthsSum = pre;
+        } else {
+          // Generate lengths across a uniform distribution.
+          lengthsHandle.randomize(param.numIndicesPerBatchMin_,
+                                  param.numIndicesPerBatchMax_, mod->getPRNG());
+          for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
+            auto &nextLength = lengthsHandle.raw(j);
+            if (lengthsSum == maxNumIndicesWeights) {
+              // If we have maxed out the maximum allowed indices then zero out
+              // the rest of the lengths.
+              nextLength = 0;
+              continue;
+            } else if (lengthsSum + nextLength > maxNumIndicesWeights) {
+              // If the next length will equal or overflow the maximum allowed
+              // indices then fill it up totally.
+              nextLength = maxNumIndicesWeights - lengthsSum;
+            }
+            offsetsHandle.raw(j) = lengthsSum;
+            lengthsSum += nextLength;
+            totalNumLengths += 1;
           }
-          pre = cur;
+          // totalLengthsSum += lengthsSum;
+          offsetsHandle.raw(lengthsHandle.size()) = lengthsSum;
         }
-
-        lengthsSum = pre;
       } else {
-        // Generate lengths across a uniform distribution.
-        lengthsHandle.randomize(param.numIndicesPerBatchMin_,
-                                param.numIndicesPerBatchMax_, mod->getPRNG());
-        for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
-          auto &nextLength = lengthsHandle.raw(j);
-          if (lengthsSum == maxNumIndicesWeights) {
-            // If we have maxed out the maximum allowed indices then zero out
-            // the rest of the lengths.
-            nextLength = 0;
-            continue;
-          } else if (lengthsSum + nextLength > maxNumIndicesWeights) {
-            // If the next length will equal or overflow the maximum allowed
-            // indices then fill it up totally.
-            nextLength = maxNumIndicesWeights - lengthsSum;
+        offsets = mod->createPlaceholder(
+            ElemKind::Int64ITy, {numTables * batchSize + 1}, "offsets", false);
+        auto offsetsHandle = bindings_.allocate(offsets)->getHandle<int64_t>();
+
+        if (extern_data) {
+          int32_t cur, pre, base = 0;
+
+          for (size_t j = 0, e = offsetsHandle.size(); j < e; j++) {
+            cur = off_tensor[j].item<int>();
+            if (j % batchSize == 0) {
+              base = cur;
+            }
+            offsetsHandle.raw(j) = cur - base;
+            if (j > 0) {
+              lengthsHandle.raw(j) = cur - pre;
+            }
+            pre = cur;
           }
-          offsetsHandle.raw(j) = lengthsSum;
-          lengthsSum += nextLength;
-          totalNumLengths += 1;
+
+          lengthsSum = pre;
+        } else {
+          // Generate lengths across a uniform distribution.
+          lengthsHandle.randomize(param.numIndicesPerBatchMin_,
+                                  param.numIndicesPerBatchMax_, mod->getPRNG());
+          for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
+            auto &nextLength = lengthsHandle.raw(j);
+            if (lengthsSum == maxNumIndicesWeights) {
+              // If we have maxed out the maximum allowed indices then zero out
+              // the rest of the lengths.
+              nextLength = 0;
+              continue;
+            } else if (lengthsSum + nextLength > maxNumIndicesWeights) {
+              // If the next length will equal or overflow the maximum allowed
+              // indices then fill it up totally.
+              nextLength = maxNumIndicesWeights - lengthsSum;
+            }
+            offsetsHandle.raw(j) = lengthsSum;
+            lengthsSum += nextLength;
+            totalNumLengths += 1;
+          }
+          // totalLengthsSum += lengthsSum;
+          offsetsHandle.raw(lengthsHandle.size()) = lengthsSum;
         }
-        // totalLengthsSum += lengthsSum;
-        offsetsHandle.raw(lengthsHandle.size()) = lengthsSum;
       }
 
       // Create and sort indices
-      Tensor indicesReal(ElemKind::Int64ITy, {lengthsSum});
+      Placeholder *indices;
+      if (param.itype_ == ElemKind::Int64ITy) {
+        Tensor indicesReal(ElemKind::Int64ITy, {lengthsSum});
 
-      if (extern_data) {
-        for (size_t j = 0; j < lengthsSum; j++) {
-          indicesReal.getHandle<int64_t>().raw(j) = idx_tensor[j].item<int>();
+        if (extern_data) {
+          for (size_t j = 0; j < lengthsSum; j++) {
+            indicesReal.getHandle<int64_t>().raw(j) = idx_tensor[j].item<int>();
+          }
+        } else {
+          indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries_,
+                                                     mod->getPRNG());
         }
+        // Sort each segment
+        if (param.isSorted_) {
+          auto *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
+          for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
+            const size_t curLength = lengthsHandle.raw(j);
+            std::sort(indicesRealPtr, indicesRealPtr + curLength);
+            indicesRealPtr += curLength;
+          }
+        }
+
+        // Create indices
+        indices =
+            mod->createPlaceholder(ElemKind::Int64ITy, {maxNumIndicesWeights},
+                                   "indices" + std::to_string(layer),
+                                   /* isTrainable */ false);
+        bindings_.insert(indices, std::move(indicesReal));
       } else {
-        indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries_,
-                                                   mod->getPRNG());
-      }
-      // Sort each segment
-      if (param.isSorted_) {
-        auto *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
-        for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
-          const size_t curLength = lengthsHandle.raw(j);
-          std::sort(indicesRealPtr, indicesRealPtr + curLength);
-          indicesRealPtr += curLength;
+        Tensor indicesReal(ElemKind::Int32ITy, {lengthsSum});
+
+        if (extern_data) {
+          for (size_t j = 0; j < lengthsSum; j++) {
+            indicesReal.getHandle<int32_t>().raw(j) = idx_tensor[j].item<int>();
+          }
+        } else {
+          indicesReal.getHandle<int32_t>().randomize(0, param.numTableEntries_,
+                                                     mod->getPRNG());
         }
+        // Sort each segment
+        if (param.isSorted_) {
+          auto *indicesRealPtr = (int32_t *)indicesReal.getUnsafePtr();
+          for (size_t j = 0, e = lengthsHandle.size(); j < e; j++) {
+            const size_t curLength = lengthsHandle.raw(j);
+            std::sort(indicesRealPtr, indicesRealPtr + curLength);
+            indicesRealPtr += curLength;
+          }
+        }
+
+        // Create indices
+        indices =
+            mod->createPlaceholder(ElemKind::Int32ITy, {maxNumIndicesWeights},
+                                   "indices" + std::to_string(layer),
+                                   /* isTrainable */ false);
+        bindings_.insert(indices, std::move(indicesReal));
       }
-
-      // Create indices
-      auto *indices =
-          mod->createPlaceholder(ElemKind::Int64ITy, {maxNumIndicesWeights},
-                                 "indices" + std::to_string(layer),
-                                 /* isTrainable */ false);
-
-      bindings_.insert(indices, std::move(indicesReal));
 
       Node *R = nullptr;
 
@@ -434,10 +525,38 @@ inline TBEParam parseArgs(int argc, char *argv[]) {
   } else {
     llvm_unreachable("Invalid fusedDtype");
   }
-  printf("addClipStr %s\n", argv[15]);
-  if (std::string(argv[15]) == "True") {
+
+  printf("tableOffsetDtypeStr %s\n", argv[15]);
+  if (std::string(argv[15]) == "Int32") {
+    param.ttype_ = ElemKind::Int32ITy;
+  } else if (std::string(argv[15]) == "Int64") {
+    param.ttype_ = ElemKind::Int64ITy;
+  } else {
+    llvm_unreachable("Invalid tableOffsetDtype");
+  }
+
+  printf("offsetDtypeStr %s\n", argv[16]);
+  if (std::string(argv[16]) == "Int32") {
+    param.otype_ = ElemKind::Int32ITy;
+  } else if (std::string(argv[16]) == "Int64") {
+    param.otype_ = ElemKind::Int64ITy;
+  } else {
+    llvm_unreachable("Invalid offsetDtype");
+  }
+
+  printf("indexDtypeStr %s\n", argv[17]);
+  if (std::string(argv[17]) == "Int32") {
+    param.itype_ = ElemKind::Int32ITy;
+  } else if (std::string(argv[17]) == "Int64") {
+    param.itype_ = ElemKind::Int64ITy;
+  } else {
+    llvm_unreachable("Invalid indexDtype");
+  }
+
+  printf("addClipStr %s\n", argv[18]);
+  if (std::string(argv[18]) == "True") {
     param.addClip_ = true;
-  } else if (std::string(argv[15]) == "False") {
+  } else if (std::string(argv[18]) == "False") {
     param.addClip_ = false;
   } else {
     llvm_unreachable("Invalid addClipStr");
@@ -475,6 +594,9 @@ int main(int argc, char *argv[]) {
          "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
          "dtypeStr(\"Float16\"|\"Float32\") "
          "fusedDtypeStr(\"Int4\"|\"Int8\"|\"FP16\") "
+         "tableOffsetDtypeStr(\"Int32\"|\"Int64\") "
+         "offsetDtypeStr(\"Int32\"|\"Int64\") "
+         "indexDtypeStr(\"Int32\"|\"Int64\") "
          "addClipStr(\"True\"|\"False\")\nQuantized only options: "
          "quantizationDtypeStr(\"Int8\"|\"Int4\") "
          "useFP16AccumulationStr(\"True\"|\"False\") \n"
@@ -497,15 +619,16 @@ int main(int argc, char *argv[]) {
         "_,benchName,_,batchSize,numIndicesPerBatchMin:numIndicesPerBatchMax,"
         "numIndicesPerBatchPad,numTableEntries,numTables,numElementsPerRow,"
         "numReps,numAsyncLaunches,numTBENodes,weighted,backendStr,dtype,"
-        "fuseDtype"));
+        "fuseDtype,tableOffsetDtype,offsetDtype,indexDtype"));
     runPrefix = std::string(strFormat(
-        "TBEBench,SW,%zu,%zu:%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s",
+        "TBEBench,SW,%zu,%zu:%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%s,%s,%s",
         (size_t)param.batchSize_, (size_t)param.numIndicesPerBatchMin_,
         (size_t)param.numIndicesPerBatchMax_,
         (size_t)param.numIndicesPerBatchPad_, (size_t)param.numTableEntries_,
         (size_t)param.numTables_, (size_t)param.numElementsPerRow_,
         (size_t)param.numReps_, (size_t)param.numAsyncLaunches_,
-        (size_t)param.numTBENodes_, argv[9], argv[10], argv[11], argv[12]));
+        (size_t)param.numTBENodes_, argv[10], argv[12], argv[13], argv[14],
+        argv[15], argv[16], argv[17]));
 
     TBEBench b(param);
 
