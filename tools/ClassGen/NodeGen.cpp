@@ -424,6 +424,13 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs Mul on the LHS and RHS operands.");
 
+  BB.newNode("MulConst")
+      .addInput("RHS")
+      .addMember(MemberType::Float, "LHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs Mul on the RHS and const LHS operands.");
+
   BB.newNode("Sub")
       .addInput("LHS")
       .addInput("RHS")

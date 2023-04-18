@@ -3458,6 +3458,12 @@ void BoundInterpreterFunction::fwdElementRsubConstInst(
       "RsubConstInst instruction not supported on Inrerpretter backend\n");
 }
 
+void BoundInterpreterFunction::fwdElementMulConstInst(
+    const ElementMulConstInst * /*unused*/) {
+  llvm_unreachable(
+      "MulConstInst instruction not supported on Inrerpretter backend\n");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdElementMulInstArithmeticImpl(
     const ElementMulInst *I) {
