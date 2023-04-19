@@ -2765,6 +2765,7 @@ DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProductGrad)
 // Custom nodes.
 DEF_UNSUPPORTED_NODE(RsubConst)
+DEF_UNSUPPORTED_NODE(MulConst)
 
 // Include backend-specific ONNX model writers.
 #include "glow/ONNXModelWriterIncludes.h"
