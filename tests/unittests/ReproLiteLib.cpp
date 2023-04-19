@@ -34,6 +34,8 @@ llvm::cl::opt<std::string>
 
 // Parses JSON input, weights, and user inputs
 
+/// Check that \p path is a valid filepath. Treat missing paths as
+/// fatal errors if \p missingPathFatal is true.
 static const std::string &checkPath(const std::string &path,
                                     bool missingPathFatal = false) {
   if (std::filesystem::exists(path)) {
@@ -48,6 +50,8 @@ static const std::string &checkPath(const std::string &path,
   }
 }
 
+/// Populate data structures serializedGraphJson_, config_, and strweights_
+/// using data stored in artifact files.
 void ReproLiteLib::loadFromAFG() {
   std::ifstream jsonFile(jsonPathOpt_.c_str());
   std::stringstream buffer;
@@ -63,8 +67,23 @@ void ReproLiteLib::loadFromAFG() {
     while (std::getline(tokenizer, token, ':')) {
       tokens.push_back(token);
     }
-    assert(tokens.size() == 2);
-    config_[tokens[0]] = tokens[1];
+    int count = 0;
+    std::string rhs;
+    // Handle cases where we have multiple nested dictionaries.
+    // ex: foo : {bar : 1, baz : 2}
+    // This can happen with registered operators.
+    for (const auto &ntoken : tokens) {
+      if (count == 0) {
+        count++;
+        continue;
+      } else if (count == 1) {
+        count++;
+      } else if (count == 2) {
+        rhs += ":";
+      }
+      rhs += ntoken;
+    }
+    config_[tokens[0]] = rhs;
   }
   configFile.close();
   std::ifstream fin(weightsPathOpt_, std::ios::binary);
@@ -79,6 +98,8 @@ void ReproLiteLib::loadFromAFG() {
   }
 }
 
+/// Parse the command line; checking for the existence of the
+/// necessary config, graph_ir, and weights files.
 void ReproLiteLib::parseCommandLine(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
@@ -88,6 +109,7 @@ void ReproLiteLib::parseCommandLine(int argc, char **argv) {
   weightsPathOpt_ = checkPath(reproPathOpt + "/weights.pt", true);
 }
 
+/// Lower the serialized FX IR using the C++ backend.
 void ReproLiteLib::run() {
   // Create FXGlowCompileSpec.
   loadFromAFG();
