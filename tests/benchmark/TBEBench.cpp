@@ -621,7 +621,8 @@ int main(int argc, char *argv[]) {
         "numReps,numAsyncLaunches,numTBENodes,weighted,backendStr,dtype,"
         "fuseDtype,tableOffsetDtype,offsetDtype,indexDtype"));
     runPrefix = std::string(strFormat(
-        "TBEBench,SW,%zu,%zu:%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%s,%s,%s",
+        "TBEBench,SW,%zu,%zu:%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%s,%s,"
+        "%s",
         (size_t)param.batchSize_, (size_t)param.numIndicesPerBatchMin_,
         (size_t)param.numIndicesPerBatchMax_,
         (size_t)param.numIndicesPerBatchPad_, (size_t)param.numTableEntries_,
