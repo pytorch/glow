@@ -168,6 +168,10 @@ protected:
   DebugInfo dbgInfo_;
   /// Debug info builder.
   std::unique_ptr<llvm::DIBuilder> DIBuilder_;
+  /// Map from non-mangled function names to the list of mangled names of the
+  /// functions in the LLVM module that match the name represented by the key.
+  std::unordered_map<std::string, std::vector<std::string>>
+      llvmFunctionNameToMangledName_;
 
   /// A set that contains all of the argument that we request from the
   /// specializer not to specialize.
@@ -340,6 +344,10 @@ protected:
   /// \returns the backing tensor associated to the IR constant value \p value.
   Tensor getTensorForConstantValue(Value *value);
 
+  /// Initialize a map from function names to mangled names of LLVM functions in
+  /// the module matching it.
+  void initLLVMFunctionNameToMangledNameMap();
+
 public:
   /// Destructor
   virtual ~LLVMIRGen() {}
@@ -401,6 +409,12 @@ public:
   virtual llvm::CallInst *
   createUncheckedCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
                       llvm::ArrayRef<llvm::Value *> args);
+  /// \returns an LLVM function by \p name. \p is just a regular human readable
+  /// function name. This helper can be used to lookup llvm::Function objects
+  /// corresponding to C++ functions with mangled names as long as there is only
+  /// one such C++ function, whose name matches the provided \p name. If there
+  /// are multiple such functions, it results in an error message.
+  virtual llvm::Function *getFunctionByName(const std::string &name);
   /// \returns a libjit API function by name.
   virtual llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.
