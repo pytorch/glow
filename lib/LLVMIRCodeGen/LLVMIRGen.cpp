@@ -25,7 +25,9 @@
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
+#include "glow/Support/Debug.h"
 
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -35,6 +37,8 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+
+#define DEBUG_TYPE "llvmirgen"
 
 using namespace glow;
 using llvm::cast;
@@ -759,21 +763,111 @@ static std::string createName(const std::string &name, ElemKind elemTy) {
   }
 }
 
+void LLVMIRGen::initLLVMFunctionNameToMangledNameMap() {
+  CHECK(llvmFunctionNameToMangledName_.empty());
+  constexpr size_t maxFnBaseNameLen = 4096;
+  char *fnNameBuf = static_cast<char *>(std::malloc(maxFnBaseNameLen));
+  // Build a map from names to the list of matching mangled names.
+  for (llvm::Function &F : getModule()) {
+    auto mangledName = F.getName().str();
+    llvm::ItaniumPartialDemangler Mangler;
+    if (Mangler.partialDemangle(mangledName.c_str())) {
+      // Could not demangle.
+      continue;
+    }
+    size_t fnNameLen = maxFnBaseNameLen;
+    char *demangledNamePtr = Mangler.getFunctionBaseName(fnNameBuf, &fnNameLen);
+    if (!demangledNamePtr || fnNameLen == 0) {
+      continue;
+    }
+    std::string demangledFnName(demangledNamePtr);
+    // Add the information about the mapping for a specific function.
+    // Remember the mapping between the function name and its mangled name.
+    if (!llvmFunctionNameToMangledName_.count(demangledFnName)) {
+      llvmFunctionNameToMangledName_.insert({demangledFnName, {}});
+    }
+    llvmFunctionNameToMangledName_[demangledFnName].push_back(mangledName);
+  }
+  // Free up the memory.
+  if (fnNameBuf) {
+    free(fnNameBuf);
+  }
+  DEBUG_GLOW({
+    // Dump the map for debugging purposes.
+    llvm::dbgs() << "Mapping between function names and matching LLVM function "
+                    "names in the module:\n";
+    for (auto &kv : llvmFunctionNameToMangledName_) {
+      auto &nonMangledName = kv.first;
+      auto &mangledNames = kv.second;
+      llvm::dbgs() << nonMangledName << " -> ";
+      for (auto &mangledName : mangledNames) {
+        llvm::dbgs() << mangledName << "; ";
+      }
+      llvm::dbgs() << "\n";
+    }
+    llvm::dbgs() << "\n";
+    llvm::dbgs().flush();
+  });
+}
+
+llvm::Function *LLVMIRGen::getFunctionByName(const std::string &name) {
+  // Initialize if this is the first time getFunctionByName is invoked.
+  if (llvmFunctionNameToMangledName_.empty()) {
+    initLLVMFunctionNameToMangledNameMap();
+  }
+  auto lookupFunctionByName = [&]() -> llvm::Function * {
+    auto it = llvmFunctionNameToMangledName_.find(name);
+    if (it != llvmFunctionNameToMangledName_.end()) {
+      // Check if there is a conflict as there are multiple functions with the
+      // same name. This is likely due to having multiple C++ functions with the
+      // same name, but different types of arguments.
+      auto &mangledNames = it->second;
+      if (mangledNames.size() > 1) {
+        LOG(INFO) << "Multiple functions matching name: " << name << "\n";
+        for (auto &mangledName : mangledNames) {
+          LOG(INFO) << "\t" << mangledName << "\n";
+        }
+      }
+      CHECK_EQ(mangledNames.size(), 1)
+          << "Expected only one matching function for " << name;
+      auto fullName = mangledNames.front();
+      auto *F = getModule().getFunction(fullName);
+      if (!F) {
+        // TODO: Remove the function name from the map.
+      }
+      return F;
+    }
+    // No match found.
+    auto *F = getModule().getFunction(name);
+    if (F) {
+      // Update the map with the new function.
+      if (!llvmFunctionNameToMangledName_.count(name)) {
+        llvmFunctionNameToMangledName_.insert({name, {}});
+      }
+      llvmFunctionNameToMangledName_[name].push_back(name);
+    }
+    return F;
+  };
+  // Check if the full function name is known already.
+  auto *F = lookupFunctionByName();
+  return F;
+}
+
 llvm::Function *
 LLVMIRGen::getFunction(const std::string &name,
                        llvm::ArrayRef<glow::ElemKind> elemTyArray) {
-  auto strName = "libjit_" + name;
+  auto strName = name;
 
   for (auto elTy : elemTyArray) {
     strName = createName(strName, elTy);
   }
-  auto *F = llmodule_->getFunction(strName);
-  CHECK(F) << "Unable to load the function: " << strName.c_str();
-  return F;
+  return getFunction(strName);
 }
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
-  return getFunction(name, llvm::ArrayRef<ElemKind>{});
+  auto *F = getFunctionByName("libjit_" + name);
+  CHECK(F) << "Unable to load the function: " << name;
+  return F;
 }
 
 llvm::Function *LLVMIRGen::getFunction(const std::string &name,
