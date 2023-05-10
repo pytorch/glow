@@ -90,19 +90,6 @@ GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-d
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo apt-get update
     upgrade_python
-elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
-    # Install Glow dependencies
-    sudo apt-get update
-    upgrade_python
-    sudo apt-get install -y llvm-7
-    # Redirect clang
-    sudo ln -s /usr/bin/clang-7 /usr/bin/clang
-    sudo ln -s /usr/bin/clang++-7 /usr/bin/clang++
-    sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
-    sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
-
-    sudo apt-get install -y ${GLOW_DEPS}
-    install_fmt
 else
     # Install Glow dependencies
     sudo apt-get update
@@ -120,14 +107,6 @@ fi
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo pip install cmake==3.17.3
-elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
-    mkdir ~/cmake-3.21.2
-    cd ~/cmake-3.21.2
-    mkdir install
-    wget https://github.com/Kitware/CMake/releases/download/v3.21.2/cmake-3.21.2-linux-x86_64.sh
-    echo "y" | sudo sh cmake-3.21.2-linux-x86_64.sh --prefix=${PWD}/install
-    export PATH=${PWD}/install/cmake-3.21.2-linux-x86_64/bin:${PATH}
-    cd -
 else
     sudo apt-get install cmake
 fi
@@ -142,13 +121,6 @@ cd ${GLOW_DIR}
 mkdir build && cd build
 
 CMAKE_ARGS=()
-# PYTORCH build are directly using the sccache wrappers
-if [[ "${CIRCLE_JOB}" != "PYTORCH" ]]; then
-    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
-    CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
-    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
-    CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
-fi
 
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
@@ -157,19 +129,6 @@ CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
 if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
-    CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
-elif [[ "$CIRCLE_JOB" == "RELEASE_WITH_EXPENSIVE_TESTS" ]]; then
-    # Download the models and tell cmake where to find them.
-    MODELS_DIR="$GLOW_DIR/downloaded_models"
-    DOWNLOAD_EXE="python $GLOW_DIR/utils/download_datasets_and_models.py  -c resnet50 en2gr"
-    mkdir $MODELS_DIR
-    (
-        cd $MODELS_DIR
-        $DOWNLOAD_EXE
-    )
-    CMAKE_ARGS+=("-DGLOW_MODELS_DIR=$MODELS_DIR")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
-    CMAKE_ARGS+=("-DGLOW_WITH_BUNDLES=ON")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
 elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
     sudo apt-get install wget
@@ -191,18 +150,6 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     source venv/bin/activate
     pip install black==22.3.0
     cd ${GLOW_DIR}
-elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
-    # Build PyTorch
-    cd /tmp
-    python3.9 -m virtualenv venv
-    source venv/bin/activate
-    git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
-    cd pytorch
-    pip install -r requirements.txt
-    pip install parameterized
-    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 BUILD_CAFFE2=ON USE_FBGEMM=ON python setup.py install
-    cd ${GLOW_DIR}
-    cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
     install_pocl
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")

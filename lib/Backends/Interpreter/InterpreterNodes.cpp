@@ -2231,6 +2231,14 @@ void BoundInterpreterFunction::fwdSigmoidGradInst(const SigmoidGradInst *) {
   llvm_unreachable("SigmoidGrad instruction is not supported yet");
 }
 
+void BoundInterpreterFunction::fwdNanToNumInst(const NanToNumInst *) {
+  llvm_unreachable("NanToNum instruction is not supported yet");
+}
+
+void BoundInterpreterFunction::fwdPadInst(const PadInst *) {
+  llvm_unreachable("Pad instruction is not supported yet");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -3448,6 +3456,12 @@ void BoundInterpreterFunction::fwdElementRsubConstInst(
     const ElementRsubConstInst * /*unused*/) {
   llvm_unreachable(
       "RsubConstInst instruction not supported on Inrerpretter backend\n");
+}
+
+void BoundInterpreterFunction::fwdElementMulConstInst(
+    const ElementMulConstInst * /*unused*/) {
+  llvm_unreachable(
+      "MulConstInst instruction not supported on Inrerpretter backend\n");
 }
 
 template <typename ElemTy>
@@ -6718,6 +6732,17 @@ void BoundInterpreterFunction::fwdPermutedPooledEmbeddingsInstImpl(
   }
 }
 
+void BoundInterpreterFunction::fwdIndexAddInst(glow::IndexAddInst const *I) {
+  dispatchFloatingPointAndIndexImpl(fwdIndexAddInstImpl,
+                                    I->getInput()->getElementType(),
+                                    I->getIndex()->getElementType(), I);
+}
+
+template <typename ElemTy, typename IndexTy>
+void BoundInterpreterFunction::fwdIndexAddInstImpl(glow::IndexAddInst const *) {
+  llvm_unreachable("not yet implemented");
+}
+
 #define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
   switch (elemTy) {                                                            \
   case ElemKind::FloatTy:                                                      \
@@ -8631,4 +8656,10 @@ void BoundInterpreterFunction::fwdBBoxTransformInst(
 void BoundInterpreterFunction::fwdExternalFunctionCallInst(
     glow::ExternalFunctionCallInst const *) {
   LOG(FATAL) << "ExternalFunctionCallInst is not supported yet";
+}
+
+void BoundInterpreterFunction::fwdSumWithZeroPaddingInst(
+    const SumWithZeroPaddingInst *) {
+
+  llvm_unreachable("SumWithZeroPadding instruction is not supported yet");
 }

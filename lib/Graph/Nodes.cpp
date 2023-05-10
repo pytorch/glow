@@ -1564,6 +1564,10 @@ bool RsubConstNode::verify() const {
   return checkSameShape(getRHS(), getResult(), this);
 }
 
+bool MulConstNode::verify() const {
+  return checkSameShape(getRHS(), getResult(), this);
+}
+
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   bool NODE_NAME_##Node::verify() const {                                      \
     bool isValid = verifyInputAndGradInputTypes(                               \
@@ -3136,6 +3140,26 @@ bool PermutePooledEmbeddingsNode::verify() const {
   return verifyPermutePooledEmbeddingsNode(
       getResult(), getPooledEmbeddings(), getOffsetDimList(), getPermuteList(),
       getInvOffsetDimList(), getInvPermuteList());
+}
+
+bool IndexAddNode::verify() const {
+  auto input = getInput();
+  auto source = getSource();
+  auto index = getIndex();
+
+  bool isValid = checkType(
+      input, llvm::ArrayRef<ElemKind>({ElemKind::FloatTy, ElemKind::Float16Ty}),
+      this);
+
+  isValid &= checkType(
+      source,
+      llvm::ArrayRef<ElemKind>({ElemKind::FloatTy, ElemKind::Float16Ty}), this);
+
+  isValid &= checkType(
+      index, llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      this);
+
+  return isValid;
 }
 
 //===----------------------------------------------------------------------===//

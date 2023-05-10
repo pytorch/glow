@@ -499,6 +499,9 @@ private:
   void
   fwdPermutedPooledEmbeddingsInstImpl(const PermutePooledEmbeddingsInst *I);
 
+  template <typename ElemTy, typename IndexTy>
+  void fwdIndexAddInstImpl(glow::IndexAddInst const *);
+
   ///@}
 };
 

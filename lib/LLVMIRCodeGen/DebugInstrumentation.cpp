@@ -134,14 +134,12 @@ public:
 
       if (funcToInstrument.style == CALL) {
         if (elements.size() >= 3 && elements[2] != "none") {
-          funcToInstrument.callBefore =
-              irgen_.getModule().getFunction(elements[2]);
+          funcToInstrument.callBefore = irgen_.getFunction(elements[2].str());
           CHECK(funcToInstrument.callBefore)
               << "Cannot find " << elements[2].data() << " function";
         }
         if (elements.size() >= 4 && elements[3] != "none") {
-          funcToInstrument.callAfter =
-              irgen_.getModule().getFunction(elements[3]);
+          funcToInstrument.callAfter = irgen_.getFunction(elements[3].str());
           CHECK(funcToInstrument.callAfter)
               << "Cannot find " << elements[3].data() << " function";
         }
@@ -156,8 +154,7 @@ public:
       return;
     }
 
-    auto *printfF =
-        irgen_.getModule().getFunction(llvmIrInstrPrintoutFuncName.getValue());
+    auto *printfF = irgen_.getFunction(llvmIrInstrPrintoutFuncName.getValue());
     CHECK(printfF) << "Cannot find " << llvmIrInstrPrintoutFuncName.getValue()
                    << " function";
 
@@ -345,8 +342,7 @@ private:
           printStructFuncName += structName;
           // Checking if module has print_<Struct\Class name> function to
           // print arg. If not then just jumpring to default printout - ...
-          if (auto *printStruct =
-                  irgen_.getModule().getFunction(printStructFuncName)) {
+          if (auto *printStruct = irgen_.getFunction(printStructFuncName)) {
             builder.CreateCall(printStruct->getFunctionType(), printStruct,
                                {op.get()});
             continue;

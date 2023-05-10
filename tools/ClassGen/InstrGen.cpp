@@ -627,6 +627,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Mul");
 
+  BB.newInstr("ElementMulConst")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("RHS", OperandKind::In)
+      .addMember(MemberType::Float, "LHS")
+      .inplaceOperand({"Dest", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "RHS"})
+      .autoIRGen("MulConst");
+
   BB.newInstr("ElementDiv")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -1084,6 +1093,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"PermuteList", "ElemKind::Int64ITy"});
 
+  BB.newInstr("IndexAdd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Index", OperandKind::In)
+      .addOperand("Source", OperandKind::In)
+      .addMember(MemberType::Int64, "Dim")
+      .addMember(MemberType::Float, "Alpha")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Input"});
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//
@@ -1131,6 +1150,20 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
+
+  BB.newInstr("NanToNum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Float, "Nan")
+      .addMember(MemberType::Float, "PosInf")
+      .addMember(MemberType::Float, "NegInf")
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)
@@ -1323,6 +1356,13 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Values", "LabelValues"})
       .autoIRGen();
 
+  BB.newInstr("Pad")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Pad")
+      .addMember(MemberType::Unsigned, "PaddingMode")
+      .addMember(MemberType::Float, "Value")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//
@@ -1542,6 +1582,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::String, "OperatorOptions")
       .autoVerify(VerifyKind::NoVerify);
 
+  /// Input(s) will be added in backend specific function
+  /// (Backend::generateInst())
+  BB.newInstr("SumWithZeroPadding")
+      .addOperand("Dest", OperandKind::Out)
+      .autoVerify(VerifyKind::NoVerify);
   //===--------------------------------------------------------------------===//
   //                Region of Interest (ROI)
   //===--------------------------------------------------------------------===//
