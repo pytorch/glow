@@ -22,6 +22,10 @@
 #ifndef GLOW_TESTS_REPROFXLIB_H
 #define GLOW_TESTS_REPROFXLIB_H
 
+namespace glow {
+struct CompiledResult;
+}
+
 class ReproLiteLib {
 public:
   std::string jsonPathOpt_;
@@ -34,6 +38,7 @@ public:
   void loadFromAFG();
   void parseCommandLine(int argc, char **argv);
   void run();
+  void generateBundle(std::unique_ptr<glow::CompiledResult> cr);
 };
 
 #endif // GLOW_TESTS_REPROFXLIB_H
