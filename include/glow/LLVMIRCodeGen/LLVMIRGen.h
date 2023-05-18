@@ -454,6 +454,15 @@ public:
   std::string getMainEntryName() const;
   /// Set the name of the main entry point (name is automatically legalized).
   void setMainEntryName(std::string name);
+  /// \returns true if lazy loading of LLVM modules is enabled.
+  virtual bool shouldUseLLVMModuleLazyLoading() { return false; }
+  /// Search for the standard library bitcode file \p filename on disk or use
+  /// provided \p libjitBC bitcode and load it into an LLVM module. We search
+  /// for the standard library around the current executable and also in the
+  /// current directory.
+  virtual std::unique_ptr<llvm::Module>
+  loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
+                      llvm::StringRef libjitBC);
   /// Creates an LLVM module, the entry function, etc.
   virtual void initCodeGen();
   /// Emits the code of the entry function, performs optimizations, etc.
