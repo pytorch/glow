@@ -98,9 +98,19 @@ void ReproLiteLib::loadFromAFG() {
   auto res = torch::pickle_load(bytes);
   fin.close();
   for (auto &item : res.toGenericDict()) {
-    at::IValue key = item.key();
+    const at::IValue &key = item.key();
     const at::IValue &val = item.value();
-    strweights_[key.toStringRef()] = (void *)&val;
+    CHECK(val.isTensor()) << "Expected tensor but got " << val.type()->str();
+    auto &tensor = val.toTensor();
+    // Get the actual pointer to the tensor data.
+    auto dataPtr = static_cast<const uint8_t *>(tensor.data_ptr());
+    // Get the size of the tensor in bytes.
+    auto size = tensor.numel() * tensor.element_size();
+    // Make sure that data is accessible by looking at the first and last
+    // element.
+    CHECK(dataPtr[0] + dataPtr[size - 1] == dataPtr[size - 1] + dataPtr[0])
+        << "Tensor data is not accessible";
+    strweights_[key.toStringRef()] = (void *)dataPtr;
   }
 }
 
