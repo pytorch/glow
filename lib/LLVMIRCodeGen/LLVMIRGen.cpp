@@ -33,6 +33,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
@@ -201,9 +202,9 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
 // Search for the standard library bitcode file on disk and load it into an
 // LLVM module. We search for the standard library around the current executable
 // and also in the current directory.
-static std::unique_ptr<llvm::Module>
-loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
-                    llvm::StringRef libjitBC) {
+std::unique_ptr<llvm::Module>
+LLVMIRGen::loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
+                               llvm::StringRef libjitBC) {
   using llvm::sys::path::append;
   using llvm::sys::path::parent_path;
 
@@ -211,13 +212,24 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
 
   // Parse the compiled-in image of libjit and return the resulting Module.
   // checking for and reporting errors from parseIR.
+  auto memBufRef = llvm::MemoryBufferRef(
+      llvm::StringRef(reinterpret_cast<const char *>(libjitBC.data()),
+                      libjitBC.size()),
+      "libjit.bc");
 
-  auto mod = llvm::parseIR(
-      llvm::MemoryBufferRef(
-          llvm::StringRef(reinterpret_cast<const char *>(libjitBC.data()),
-                          libjitBC.size()),
-          "libjit.bc"),
-      error, *ctx);
+  std::unique_ptr<llvm::Module> mod(nullptr);
+
+  if (shouldUseLLVMModuleLazyLoading()) {
+#if LLVM_VERSION_MAJOR >= 9
+    mod = llvm::getLazyIRModule(llvm::MemoryBuffer::getMemBuffer(memBufRef),
+                                error, *ctx);
+#else
+    LOG(FATAL) << "You need to use LLVM 9 or higher to support lazy loading of "
+                  "LLVM IR modules.";
+#endif
+  } else {
+    mod = llvm::parseIR(memBufRef, error, *ctx);
+  }
 
   if (!mod) {
     error.print("LLVMIRGen", llvm::errs());
