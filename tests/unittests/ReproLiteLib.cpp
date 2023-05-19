@@ -95,9 +95,9 @@ void ReproLiteLib::loadFromAFG() {
   std::ifstream fin(weightsPathOpt_, std::ios::binary);
   std::vector<char> bytes((std::istreambuf_iterator<char>(fin)),
                           (std::istreambuf_iterator<char>()));
-  auto res = torch::pickle_load(bytes);
+  weights_ = torch::pickle_load(bytes);
   fin.close();
-  for (auto &item : res.toGenericDict()) {
+  for (auto &item : weights_.toGenericDict()) {
     const at::IValue &key = item.key();
     const at::IValue &val = item.value();
     CHECK(val.isTensor()) << "Expected tensor but got " << val.type()->str();
@@ -108,7 +108,7 @@ void ReproLiteLib::loadFromAFG() {
     auto size = tensor.numel() * tensor.element_size();
     // Make sure that data is accessible by looking at the first and last
     // element.
-    CHECK(dataPtr[0] + dataPtr[size - 1] == dataPtr[size - 1] + dataPtr[0])
+    CHECK_EQ(dataPtr[0] + dataPtr[size - 1], dataPtr[size - 1] + dataPtr[0])
         << "Tensor data is not accessible";
     strweights_[key.toStringRef()] = (void *)dataPtr;
   }
