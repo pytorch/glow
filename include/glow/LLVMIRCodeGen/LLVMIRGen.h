@@ -553,6 +553,12 @@ public:
   /// Add a bundle object \p objectName to be archived to the bundle. The object
   /// must be registered in the \ref objectRegistry_ otherwise error is thrown.
   virtual void addBundleObject(llvm::StringRef objectName);
+  // Dump the LLVM IR module to the given stream.
+  void dump(llvm::raw_ostream &out) const;
+  // Dump the LLVM IR module to a stdout.
+  void dump() const;
+  // Return the output of the LLVM IR module as a string.
+  std::string toString() const;
 };
 
 template <typename T>
