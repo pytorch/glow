@@ -348,7 +348,7 @@ void LLVMIRGen::performCodeGen() {
 void LLVMIRGen::finishCodeGen() {
   if (dumpLLVMIR) {
     llvm::outs() << "LLVM module before optimizations:\n";
-    llmodule_->print(llvm::outs(), nullptr);
+    dump();
   }
   // Perform verification if no debug info is being emitted.
   // Otherwise, the verification is performed later by
@@ -370,7 +370,7 @@ void LLVMIRGen::finishCodeGen() {
 
   if (dumpLLVMIR) {
     llvm::outs() << "LLVM module after optimizations:\n";
-    llmodule_->print(llvm::outs(), nullptr);
+    dump();
   }
 
   if (dumpLLVMAsm) {
@@ -4268,4 +4268,17 @@ std::string LLVMIRGen::getBundleHeaderExtra() const {
     headerExtra += std::string(tfliteCustomOperatorApi);
   }
   return headerExtra;
+}
+
+void LLVMIRGen::dump(llvm::raw_ostream &out) const {
+  llmodule_->print(out, nullptr);
+}
+
+void LLVMIRGen::dump() const { dump(llvm::outs()); }
+
+std::string LLVMIRGen::toString() const {
+  std::string str;
+  llvm::raw_string_ostream out(str);
+  dump(out);
+  return str;
 }
