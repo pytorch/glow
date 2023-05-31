@@ -699,7 +699,17 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   irgen->performCodeGen();
   // Create the jitmain function to be invoked by JIT.
   emitJitMain(*irgen);
+
+  if (dumpLLVMIR) {
+    llvm::outs() << "LLVM module before optimizations:\n";
+    irgen->dump();
+  }
   irgen->finishCodeGen();
+  if (dumpLLVMIR) {
+    llvm::outs() << "LLVM module before optimizations:\n";
+    irgen->dump();
+  }
+
   // Hand over the module to JIT for the machine code generation.
   auto JIT = glow::make_unique<GlowJIT>(irgen->takeTargetMachine());
   JIT->setContext(irgen->takeLLVMContext());
