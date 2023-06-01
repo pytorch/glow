@@ -588,6 +588,8 @@ void BundleSaver::produceBundle() {
       }
 
       cmd += bundleObjectCodeOutputOpt;
+      DEBUG_GLOW(llvm::dbgs() << "Running external LLVM compiler:\n"
+                              << cmd << '\n');
       CHECK(!system(cmd.c_str()))
           << "Error running external LLVM compiler: " << cmd;
 
@@ -600,6 +602,8 @@ void BundleSaver::produceBundle() {
             " " + (outputDir + "/" + savedBundleName + ".beforeopt.bc").str();
         cmd +=
             " -O3 -o " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
+        DEBUG_GLOW(llvm::dbgs() << "Running external LLVM opt compiler:\n"
+                                << cmd << '\n');
         CHECK(!system(cmd.c_str()))
             << "Error running external opt compiler: " << cmd;
 
@@ -611,6 +615,8 @@ void BundleSaver::produceBundle() {
           }
           cmd += " " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
           cmd += " -S -o " + (outputDir + "/" + savedBundleName + ".s").str();
+          DEBUG_GLOW(llvm::dbgs() << "Running external LLVM save asm command:\n"
+                                  << cmd << '\n');
           CHECK(!system(cmd.c_str()))
               << "Error running external LLVM compiler: " << cmd;
         }
@@ -622,6 +628,8 @@ void BundleSaver::produceBundle() {
         }
         cmd += " " + (outputDir + "/" + savedBundleName + ".opt.bc").str();
         cmd += " -o " + (outputDir + "/" + savedBundleName + ".o").str();
+        DEBUG_GLOW(llvm::dbgs() << "Running external LLVM compiler:\n"
+                                << cmd << '\n');
         CHECK(!system(cmd.c_str()))
             << "Error running external LLVM compiler: " << cmd;
       }
