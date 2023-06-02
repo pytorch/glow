@@ -1103,6 +1103,12 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameShape, {"Dest", "Input"});
 
+  BB.newInstr("Mean")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "MeanDims")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//
