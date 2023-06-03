@@ -290,6 +290,7 @@ enum class LUTOperator {
   TANH,
   SIGMOID,
   LEAKY_RELU,
+  EXP,
 };
 
 enum SplitEmbeddingPoolingMode {
