@@ -3252,6 +3252,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LUTOperator lutOperator) {
   case LUTOperator::LEAKY_RELU:
     os << "LEAKY_RELU";
     break;
+  case LUTOperator::EXP:
+    os << "EXP";
+    break;
   }
   return os;
 }
