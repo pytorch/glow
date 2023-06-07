@@ -72,6 +72,10 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC)
     : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
       allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+#if LLVM_VERSION_MAJOR >= 15
+  // This API should fail on LLVM-17, we will need to keep an eye.
+  ctx_->setOpaquePointers(false);
+#endif
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -82,6 +86,10 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
     : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
       allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
       objectRegistry_(objectRegistry) {
+#if LLVM_VERSION_MAJOR >= 15
+  // This API should fail on LLVM-17, we will need to keep an eye.
+  ctx_->setOpaquePointers(false);
+#endif
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
