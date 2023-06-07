@@ -21,6 +21,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 
+#include <cstdint>
 #include <folly/Conv.h>
 #include <folly/String.h>
 #include <folly/dynamic.h>
@@ -178,6 +179,13 @@ std::vector<T> getTransposeShuffle(const folly::dynamic &node) {
   CHECK(inputs.find("permutation") != inputs.items().end())
       << "field transposed_dims doesn't exist in Conv Inputs " << node;
   return toIntegerArray<uint32_t>(inputs["permutation"], 2);
+}
+
+template <class T> std::vector<T> getMeanDims(const folly::dynamic &node) {
+  auto &inputs = getNodeKwargs(node);
+  CHECK(inputs.find("dim") != inputs.items().end())
+      << "field dims doesn't exist in Mean Inputs " << node;
+  return toIntegerArray<uint32_t>(inputs["dim"]);
 }
 
 /// Search \p storageNodeNameToDest and \p nonStorageNodeNameToDest for

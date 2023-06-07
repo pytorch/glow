@@ -6743,6 +6743,10 @@ void BoundInterpreterFunction::fwdIndexAddInstImpl(glow::IndexAddInst const *) {
   llvm_unreachable("not yet implemented");
 }
 
+void BoundInterpreterFunction::fwdMeanInst(glow::MeanInst const *) {
+  llvm_unreachable("Mean instruction is not supported yet");
+}
+
 #define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
   switch (elemTy) {                                                            \
   case ElemKind::FloatTy:                                                      \
