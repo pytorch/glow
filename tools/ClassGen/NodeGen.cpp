@@ -880,6 +880,38 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Threshold backward Node ");
 
+  BB.newNode("BinaryCrossEntropyWithLogits")
+      .addInput("Input")
+      .addInput("Target")
+      .addInput("Weight")
+      .addInput("PosWeight")
+      .addMember(MemberType::Unsigned, "Reduction")
+      .addResultFromCtorArg()
+      .setDocstring("Binary cross entroy with logits node.");
+
+  BB.newNode("WeightBinaryCrossEntropyWithLogits")
+      .addInput("Input")
+      .addInput("Target")
+      .addInput("Weight")
+      .addMember(MemberType::Unsigned, "Reduction")
+      .addResultFromCtorArg()
+      .setDocstring("Binary cross entroy with logits node.");
+
+  BB.newNode("PosWeightBinaryCrossEntropyWithLogits")
+      .addInput("Input")
+      .addInput("Target")
+      .addInput("PosWeight")
+      .addMember(MemberType::Unsigned, "Reduction")
+      .addResultFromCtorArg()
+      .setDocstring("Binary cross entroy with logits node.");
+
+  BB.newNode("SimpleBinaryCrossEntropyWithLogits")
+      .addInput("Input")
+      .addInput("Target")
+      .addMember(MemberType::Unsigned, "Reduction")
+      .addResultFromCtorArg()
+      .setDocstring("Binary cross entroy with logits node.");
+
   BB.newNode("EmbeddingBag")
       .addInput("Data")
       .addInput("Weights")
