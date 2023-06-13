@@ -390,8 +390,8 @@ public:
             "tbe_" + std::to_string(layer),
             /*devWeights*/ dataConstant, /*uvmWeights*/ dataConstant,
             weightsPlacement, weightsOffsets, weightsTysTensor, dimOffset,
-            /*totalDims*/ 1, indices, offsets,
-            SplitEmbeddingPoolingMode::EP_SUM,
+            /*totalDims*/ numTables * param.numElementsPerRow_, indices,
+            offsets, SplitEmbeddingPoolingMode::EP_SUM,
             // output type: should only be EST_FLOAT16
             SplitEmbeddingSparseType::EST_FLOAT16);
       } else {
@@ -399,8 +399,8 @@ public:
             "tbe_" + std::to_string(layer),
             /*devWeights*/ dataConstant, /*uvmWeights*/ dataConstant,
             weightsPlacement, weightsOffsets, weightsTysTensor, dimOffset,
-            /*totalDims*/ 1, indices, offsets,
-            SplitEmbeddingPoolingMode::EP_SUM,
+            /*totalDims*/ numTables * param.numElementsPerRow_, indices,
+            offsets, SplitEmbeddingPoolingMode::EP_SUM,
             // output type: should only be EST_FLOAT16
             SplitEmbeddingSparseType::EST_FLOAT16, weights);
       }
