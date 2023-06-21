@@ -17,10 +17,15 @@
 #include <llvm/ADT/StringMap.h>
 #include <map>
 #include <string>
+#include <torch/torch.h>
 #include <vector>
 
 #ifndef GLOW_TESTS_REPROFXLIB_H
 #define GLOW_TESTS_REPROFXLIB_H
+
+namespace glow {
+struct CompiledResult;
+}
 
 class ReproLiteLib {
 public:
@@ -30,10 +35,12 @@ public:
   std::string serializedGraphJson_;
   std::map<std::string, std::string> config_;
   llvm::StringMap<const void *> strweights_;
+  torch::IValue weights_;
 
   void loadFromAFG();
   void parseCommandLine(int argc, char **argv);
   void run();
+  void generateBundle(std::unique_ptr<glow::CompiledResult> cr);
 };
 
 #endif // GLOW_TESTS_REPROFXLIB_H

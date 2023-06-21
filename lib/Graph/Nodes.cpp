@@ -1200,6 +1200,14 @@ bool LogSoftMaxNode::verify() const {
   return verifyLogSoftMax(getInput(), getResult());
 }
 
+bool BinaryCrossEntropyWithLogitsNode::verify() const { return true; }
+
+bool WeightBinaryCrossEntropyWithLogitsNode::verify() const { return true; }
+
+bool PosWeightBinaryCrossEntropyWithLogitsNode::verify() const { return true; }
+
+bool SimpleBinaryCrossEntropyWithLogitsNode::verify() const { return true; }
+
 bool LogSoftMaxGradNode::verify() const {
   bool isValid = verifyInputAndGradInputTypes(getInput(),
                                               getGradOfInputNamedInput(), this);
@@ -3251,6 +3259,9 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LUTOperator lutOperator) {
     break;
   case LUTOperator::LEAKY_RELU:
     os << "LEAKY_RELU";
+    break;
+  case LUTOperator::EXP:
+    os << "EXP";
     break;
   }
   return os;

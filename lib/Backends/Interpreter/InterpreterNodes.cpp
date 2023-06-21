@@ -2385,6 +2385,34 @@ void BoundInterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
   }
 }
 
+void BoundInterpreterFunction::fwdBinaryCrossEntropyWithLogitsInst(
+    const BinaryCrossEntropyWithLogitsInst * /*unused*/) {
+  llvm_unreachable(
+      "BinaryCrossEntropyWithLogitsInst instruction not supported on "
+      "Inrerpretter backend\n");
+}
+
+void BoundInterpreterFunction::fwdWeightBinaryCrossEntropyWithLogitsInst(
+    const WeightBinaryCrossEntropyWithLogitsInst * /*unused*/) {
+  llvm_unreachable(
+      "BinaryCrossEntropyWithLogitsInst instruction not supported on "
+      "Inrerpretter backend\n");
+}
+
+void BoundInterpreterFunction::fwdPosWeightBinaryCrossEntropyWithLogitsInst(
+    const PosWeightBinaryCrossEntropyWithLogitsInst * /*unused*/) {
+  llvm_unreachable(
+      "BinaryCrossEntropyWithLogitsInst instruction not supported on "
+      "Inrerpretter backend\n");
+}
+
+void BoundInterpreterFunction::fwdSimpleBinaryCrossEntropyWithLogitsInst(
+    const SimpleBinaryCrossEntropyWithLogitsInst * /*unused*/) {
+  llvm_unreachable(
+      "BinaryCrossEntropyWithLogitsInst instruction not supported on "
+      "Inrerpretter backend\n");
+}
+
 void BoundInterpreterFunction::fwdCrossEntropyLossInst(
     const CrossEntropyLossInst *I) {
   dispatchFloatingPointImpl(fwdCrossEntropyLossInstFloatImpl,
@@ -6741,6 +6769,10 @@ void BoundInterpreterFunction::fwdIndexAddInst(glow::IndexAddInst const *I) {
 template <typename ElemTy, typename IndexTy>
 void BoundInterpreterFunction::fwdIndexAddInstImpl(glow::IndexAddInst const *) {
   llvm_unreachable("not yet implemented");
+}
+
+void BoundInterpreterFunction::fwdMeanInst(glow::MeanInst const *) {
+  llvm_unreachable("Mean instruction is not supported yet");
 }
 
 #define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \

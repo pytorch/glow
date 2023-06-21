@@ -134,13 +134,25 @@ void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
       FF.addFnAttr("no-frame-pointer-elim",
                    noFramePointerElimAttr.getValueAsString());
     }
-    // Force inline all non-no-inline functions.
-    if (!dontInline || alwaysInline) {
-      FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
-      continue;
-    }
+
+    // We should not inline a function if it has the noinline attribute or if
+    // it has the optnone attribute.
+    // Previously this condition was checked after the "if (!dontInline ||
+    // alwaysInline)" condition. As a result, functions that had optnone (and
+    // no explicit noinline) attribute could not get the noinline attribute
+    // because the logic did not fallthrough to the optnone condition. So we
+    // ran into error: "Attribute 'optnone' requires 'noinline'". So we swap
+    // the order of these checks. So remember to maintain the relative ordering
+    // of these two conditions.
     if (dontInline || optnone) {
       FF.addFnAttr(llvm::Attribute::AttrKind::NoInline);
+      continue;
+    }
+
+    // If no explicit noinline is present and no explicit optnone is present
+    // then we can safely inline the function.
+    if (!dontInline || alwaysInline) {
+      FF.addFnAttr(llvm::Attribute::AttrKind::AlwaysInline);
       continue;
     }
   }
@@ -174,8 +186,12 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
       FF.setDLLStorageClass(llvm::GlobalValue::DefaultStorageClass);
     }
 
-    // Remove NoInline attribute.
-    FF.removeFnAttr(llvm::Attribute::AttrKind::NoInline);
+    // If a function has optnone attribute then llvm IR verifier requires that
+    // the function also has the noinline attribute. So we can remove noinline
+    // only from those functions that do not have optnone attribute.
+    if (!FF.hasFnAttribute(llvm::Attribute::AttrKind::OptimizeNone)) {
+      FF.removeFnAttr(llvm::Attribute::AttrKind::NoInline);
+    }
 
     // LinkOnce linkage seems to cause problems to OrcJIT on some OS platforms.
     // In particular, ORCJit doesn't like linkonce_odr linkage which is used for

@@ -33,6 +33,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
@@ -71,6 +72,10 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC)
     : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
       allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+#if LLVM_VERSION_MAJOR >= 15
+  // This API should fail on LLVM-17, we will need to keep an eye.
+  ctx_->setOpaquePointers(false);
+#endif
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -81,6 +86,10 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
     : F_(F), ctx_(std::make_unique<llvm::LLVMContext>()),
       allocationsInfo_(allocationsInfo), libjitBC_(libjitBC),
       objectRegistry_(objectRegistry) {
+#if LLVM_VERSION_MAJOR >= 15
+  // This API should fail on LLVM-17, we will need to keep an eye.
+  ctx_->setOpaquePointers(false);
+#endif
   // Legalize main entry name.
   setMainEntryName(mainEntryName);
 }
@@ -201,9 +210,9 @@ void LLVMIRGen::loadBaseAddresses(llvm::IRBuilder<> &builder) {
 // Search for the standard library bitcode file on disk and load it into an
 // LLVM module. We search for the standard library around the current executable
 // and also in the current directory.
-static std::unique_ptr<llvm::Module>
-loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
-                    llvm::StringRef libjitBC) {
+std::unique_ptr<llvm::Module>
+LLVMIRGen::loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
+                               llvm::StringRef libjitBC) {
   using llvm::sys::path::append;
   using llvm::sys::path::parent_path;
 
@@ -211,13 +220,24 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
 
   // Parse the compiled-in image of libjit and return the resulting Module.
   // checking for and reporting errors from parseIR.
+  auto memBufRef = llvm::MemoryBufferRef(
+      llvm::StringRef(reinterpret_cast<const char *>(libjitBC.data()),
+                      libjitBC.size()),
+      "libjit.bc");
 
-  auto mod = llvm::parseIR(
-      llvm::MemoryBufferRef(
-          llvm::StringRef(reinterpret_cast<const char *>(libjitBC.data()),
-                          libjitBC.size()),
-          "libjit.bc"),
-      error, *ctx);
+  std::unique_ptr<llvm::Module> mod(nullptr);
+
+  if (shouldUseLLVMModuleLazyLoading()) {
+#if LLVM_VERSION_MAJOR >= 9
+    mod = llvm::getLazyIRModule(llvm::MemoryBuffer::getMemBuffer(memBufRef),
+                                error, *ctx);
+#else
+    LOG(FATAL) << "You need to use LLVM 9 or higher to support lazy loading of "
+                  "LLVM IR modules.";
+#endif
+  } else {
+    mod = llvm::parseIR(memBufRef, error, *ctx);
+  }
 
   if (!mod) {
     error.print("LLVMIRGen", llvm::errs());
@@ -336,7 +356,7 @@ void LLVMIRGen::performCodeGen() {
 void LLVMIRGen::finishCodeGen() {
   if (dumpLLVMIR) {
     llvm::outs() << "LLVM module before optimizations:\n";
-    llmodule_->print(llvm::outs(), nullptr);
+    dump();
   }
   // Perform verification if no debug info is being emitted.
   // Otherwise, the verification is performed later by
@@ -358,7 +378,7 @@ void LLVMIRGen::finishCodeGen() {
 
   if (dumpLLVMIR) {
     llvm::outs() << "LLVM module after optimizations:\n";
-    llmodule_->print(llvm::outs(), nullptr);
+    dump();
   }
 
   if (dumpLLVMAsm) {
@@ -4256,4 +4276,17 @@ std::string LLVMIRGen::getBundleHeaderExtra() const {
     headerExtra += std::string(tfliteCustomOperatorApi);
   }
   return headerExtra;
+}
+
+void LLVMIRGen::dump(llvm::raw_ostream &out) const {
+  llmodule_->print(out, nullptr);
+}
+
+void LLVMIRGen::dump() const { dump(llvm::outs()); }
+
+std::string LLVMIRGen::toString() const {
+  std::string str;
+  llvm::raw_string_ostream out(str);
+  dump(out);
+  return str;
 }

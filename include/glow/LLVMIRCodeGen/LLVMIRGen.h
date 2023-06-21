@@ -454,6 +454,15 @@ public:
   std::string getMainEntryName() const;
   /// Set the name of the main entry point (name is automatically legalized).
   void setMainEntryName(std::string name);
+  /// \returns true if lazy loading of LLVM modules is enabled.
+  virtual bool shouldUseLLVMModuleLazyLoading() { return false; }
+  /// Search for the standard library bitcode file \p filename on disk or use
+  /// provided \p libjitBC bitcode and load it into an LLVM module. We search
+  /// for the standard library around the current executable and also in the
+  /// current directory.
+  virtual std::unique_ptr<llvm::Module>
+  loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
+                      llvm::StringRef libjitBC);
   /// Creates an LLVM module, the entry function, etc.
   virtual void initCodeGen();
   /// Emits the code of the entry function, performs optimizations, etc.
@@ -544,6 +553,12 @@ public:
   /// Add a bundle object \p objectName to be archived to the bundle. The object
   /// must be registered in the \ref objectRegistry_ otherwise error is thrown.
   virtual void addBundleObject(llvm::StringRef objectName);
+  // Dump the LLVM IR module to the given stream.
+  void dump(llvm::raw_ostream &out) const;
+  // Dump the LLVM IR module to a stdout.
+  void dump() const;
+  // Return the output of the LLVM IR module as a string.
+  std::string toString() const;
 };
 
 template <typename T>

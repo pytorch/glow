@@ -582,6 +582,46 @@ int main(int argc, char **argv) {
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoIRGen();
 
+  BB.newInstr("BinaryCrossEntropyWithLogits")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Target", OperandKind::In)
+      .addOperand("Weight", OperandKind::In)
+      .addOperand("PosWeight", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Reduction")
+      .autoVerify(VerifyKind::SameShape, {"Input", "Target"})
+      .dataParallel()
+      .autoIRGen();
+
+  BB.newInstr("WeightBinaryCrossEntropyWithLogits")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Target", OperandKind::In)
+      .addOperand("Weight", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Reduction")
+      .autoVerify(VerifyKind::SameShape, {"Input", "Target"})
+      .dataParallel()
+      .autoIRGen();
+
+  BB.newInstr("PosWeightBinaryCrossEntropyWithLogits")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Target", OperandKind::In)
+      .addOperand("PosWeight", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Reduction")
+      .autoVerify(VerifyKind::SameShape, {"Input", "Target"})
+      .dataParallel()
+      .autoIRGen();
+
+  BB.newInstr("SimpleBinaryCrossEntropyWithLogits")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Target", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Reduction")
+      .autoVerify(VerifyKind::SameShape, {"Input", "Target"})
+      .dataParallel()
+      .autoIRGen();
+
   /// Adds the 'Slice' operand to each one of the slices in the batch.
   BB.newInstr("BatchedAdd")
       .addOperand("Dest", OperandKind::Out)
@@ -1102,6 +1142,12 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Alpha")
       .autoIRGen()
       .autoVerify(VerifyKind::SameShape, {"Dest", "Input"});
+
+  BB.newInstr("Mean")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "MeanDims")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   //===--------------------------------------------------------------------===//
   //                Fillers

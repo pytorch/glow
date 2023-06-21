@@ -120,7 +120,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const FXIRWrapper *F) {
       (uint8_t *)alignedAlloc(constantWeightVarsMemSize_, TensorAlignment);
 
   for (const auto &symbol : symbolTable_) {
-    llvm::StringRef name = symbol.first;
+    const auto &name = symbol.first;
     const RuntimeSymbolInfo &info = symbol.second;
 
     // Only work with constants/weights here.
@@ -129,16 +129,16 @@ void glow::runtime::RuntimeBundle::collectConstants(const FXIRWrapper *F) {
       continue;
     }
 
-    auto mapToConstants = F->getMapNodeNameToStorage();
-    assert(mapToConstants.find(name.str()) != mapToConstants.end());
-    const auto *wt = mapToConstants[name.str()];
+    auto &mapToConstants = F->getMapNodeNameToStorage();
+    assert(mapToConstants.find(name) != mapToConstants.end());
+    const auto *wt = mapToConstants.find(name)->second;
     const auto *c = llvm::dyn_cast<const Constant>(wt);
     if (!c) {
       continue;
     }
     auto *payload = c->getPayload().getUnsafePtr();
-    assert(info.size == c->getPayload().getSizeInBytes() &&
-           "Mismatched constant size");
+    CHECK_EQ(info.size, c->getPayload().getSizeInBytes())
+        << "Mismatched constant size";
 
     // Copy weight to offset.
     memcpy(constants_ + info.offset, payload, info.size);
