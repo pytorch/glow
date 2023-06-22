@@ -1232,7 +1232,8 @@ int main(int argc, char **argv) {
       })
       .dataParallel()
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
-      .autoIRGen();
+      .autoIRGen()
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   BB.newInstr("LeakyRelu")
       .addOperand("Dest", OperandKind::Out)
