@@ -2243,6 +2243,11 @@ void BoundInterpreterFunction::fwdPadInst(const PadInst *) {
   llvm_unreachable("Pad instruction is not supported yet");
 }
 
+void BoundInterpreterFunction::fwdPrunedArrayLookupInst(
+    const PrunedArrayLookupInst *) {
+  llvm_unreachable("PrunedArrayLookup instruction is not supported yet");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   staticAssertFloatingPointType(ElemTy);

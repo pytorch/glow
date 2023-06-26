@@ -1149,6 +1149,20 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "MeanDims")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
+  BB.newInstr("PrunedArrayLookup")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addOperand("IndexRemapping", OperandKind::In)
+      .addOperand("IndexRemappingOffsets", OperandKind::In)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"IndexRemapping", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"IndexRemappingOffsets", "ElemKind::Int64ITy"});
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//
