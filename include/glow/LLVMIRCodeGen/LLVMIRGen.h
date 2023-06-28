@@ -532,6 +532,9 @@ public:
   /// Update inline attributes of functions in the module \p M using a
   /// backend-specific logic.
   virtual void updateInlineAttributes(llvm::Module *M);
+  /// Update attributes of functions in the module \p M in a backend-specific
+  /// way.
+  virtual void updateAttributes(llvm::Module *M);
   /// \returns true if an instruction \p I can be part of a data parallel
   /// kernel. This gives backends a possibility to provide a custom logic to
   /// decide on a per-instruction basis what can be part of data parallel
