@@ -158,6 +158,22 @@ void LLVMIRGen::updateInlineAttributes(llvm::Module *M) {
   }
 }
 
+void LLVMIRGen::updateAttributes(llvm::Module *M) {
+  // Add no-frame-pointer-elim=true attribute. It helps with profiling and
+  // debugging the produced code.
+  for (auto &FF : *M) {
+    if (FF.isDeclaration()) {
+      continue;
+    }
+    if (FF.hasFnAttribute("no-frame-pointer-elim") ||
+        FF.hasFnAttribute("frame-pointer") ||
+        FF.hasFnAttribute("omit-frame-pointer")) {
+      continue;
+    }
+    FF.addFnAttr("no-frame-pointer-elim", "true");
+  }
+}
+
 void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   // Make all of the definitions from libjit and unnamed symbols internal and
   // optimizable. Everything else should be preserved as is.
@@ -214,19 +230,8 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   // Properly set inline attributes.
   updateInlineAttributes(M);
 
-  // Add no-frame-pointer-elim=true attribute. It helps with profiling and
-  // debugging the produced code.
-  for (auto &FF : *M) {
-    if (FF.isDeclaration()) {
-      continue;
-    }
-    if (FF.hasFnAttribute("no-frame-pointer-elim") ||
-        FF.hasFnAttribute("frame-pointer") ||
-        FF.hasFnAttribute("omit-frame-pointer")) {
-      continue;
-    }
-    FF.addFnAttr("no-frame-pointer-elim", "true");
-  }
+  // Update function/Module attributes for each backend.
+  updateAttributes(M);
 
   // The "main" function is parameterized by the base addresses of memory areas
   // and it is always invoked from either the "jitmain" function or the AOT
