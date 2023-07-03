@@ -1,4 +1,4 @@
-![Glow Logo](./docs/logo.svg)
+![Glow Logo](./docs/logo.svg) test
 
 [![pytorch](https://circleci.com/gh/pytorch/glow.svg?style=shield)](https://circleci.com/gh/pytorch/glow)
 
