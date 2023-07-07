@@ -361,7 +361,9 @@ void LLVMIRGen::finishCodeGen() {
   // Perform verification if no debug info is being emitted.
   // Otherwise, the verification is performed later by
   // generateDebugInfo, once the debug info emission is finalized.
-  if (!emitDebugInfo) {
+  // Also disable verification when an external compiler is used
+  // to build the model to avoid IR compatibility issues.
+  if (!emitDebugInfo && llvmCompiler.empty()) {
     // Perform verification, but ignore any debug info errors for now.
     // Debug info errors will be checked later by generateDebugInfo.
     bool brokenDebugInfo = false;
