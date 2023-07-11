@@ -1163,6 +1163,15 @@ int main(int argc, char **argv) {
                   {"IndexRemapping", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"IndexRemappingOffsets", "ElemKind::Int64ITy"});
+  BB.newInstr("IndexPut")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Values", OperandKind::In)
+      .addMember(MemberType::Boolean, "Accumulate")
+      .addMember(MemberType::Int64, "NumIndices")
+      .inplaceOperand({"Dest", "Input"})
+      .autoVerify(VerifyKind::NoVerify);
+
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//

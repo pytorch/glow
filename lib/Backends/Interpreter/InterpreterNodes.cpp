@@ -2531,6 +2531,10 @@ void BoundInterpreterFunction::fwdTouchInst(const glow::TouchInst *) {
   // Do nothing for a TouchInst
 }
 
+void BoundInterpreterFunction::fwdIndexPutInst(const IndexPutInst *) {
+  llvm_unreachable("IndexPut instruction is not supported yet");
+}
+
 void BoundInterpreterFunction::fwdInsertTensorInst(
     const glow::InsertTensorInst *I) {
   Tensor *outT = getTensor(I->getDest());
