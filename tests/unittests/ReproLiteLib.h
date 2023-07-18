@@ -20,8 +20,8 @@
 #include <torch/torch.h>
 #include <vector>
 
-#ifndef GLOW_TESTS_REPROFXLIB_H
-#define GLOW_TESTS_REPROFXLIB_H
+#ifndef GLOW_TESTS_REPROLITELIB_H
+#define GLOW_TESTS_REPROLITELIB_H
 
 namespace glow {
 struct CompiledResult;
@@ -43,4 +43,4 @@ public:
   void generateBundle(std::unique_ptr<glow::CompiledResult> cr);
 };
 
-#endif // GLOW_TESTS_REPROFXLIB_H
+#endif // GLOW_TESTS_REPROLITELIB_H
