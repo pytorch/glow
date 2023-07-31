@@ -31,7 +31,7 @@ NNPICompiledFunction::NNPICompiledFunction(
   std::memset(&config_, 0, sizeof(config_));
   std::memset(&devNetConfig_, 0, sizeof(devNetConfig_));
   for (const auto &info : runtimeBundle_.getSymbolTable()) {
-    if (info.second.symbolCategory ==
+    if (info.second->symbolCategory ==
         glow::runtime::SymbolCategory::Placeholder) {
       auto PH = glowModule->getPlaceholderByNameSlow(info.first);
       if (PH->isStatic()) {

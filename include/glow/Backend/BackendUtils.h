@@ -59,7 +59,7 @@ struct RuntimeSymbolInfo {
   int index{-1};
 };
 
-using SymbolTableTy = std::map<std::string, RuntimeSymbolInfo>;
+using SymbolTableTy = std::map<std::string, std::shared_ptr<RuntimeSymbolInfo>>;
 
 /// Contains the information needed to be passed forward from compile time to
 /// runtime. In order to allocate and initialize memory.

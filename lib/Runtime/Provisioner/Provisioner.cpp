@@ -655,7 +655,7 @@ Error Provisioner::provisionNetwork(std::unique_ptr<Network> network) {
       for (const auto &node : logicalDevices[assignment.first]) {
         auto symbolTable = node->runtimeBundle->getSymbolTable();
         for (auto info : symbolTable) {
-          if (info.second.symbolCategory ==
+          if (info.second->symbolCategory ==
               glow::runtime::SymbolCategory::Placeholder) {
             auto PH = module.getPlaceholderByNameSlow(info.first);
             if (PH->isStatic()) {
