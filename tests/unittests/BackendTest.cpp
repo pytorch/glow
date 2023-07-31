@@ -466,40 +466,40 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
 
   // Check that placeholders and constants are correctly labelled.
   EXPECT_EQ(
-      table.find(S->getPlaceholder()->getName().str())->second.symbolCategory,
+      table.find(S->getPlaceholder()->getName().str())->second->symbolCategory,
       glow::runtime::SymbolCategory::Placeholder);
-  EXPECT_EQ(table.find(ex->getName().str())->second.symbolCategory,
+  EXPECT_EQ(table.find(ex->getName().str())->second->symbolCategory,
             glow::runtime::SymbolCategory::Constant);
   // Check that activations are labelled correctly.
-  EXPECT_EQ(table.find("FC_res")->second.symbolCategory,
+  EXPECT_EQ(table.find("FC_res")->second->symbolCategory,
             glow::runtime::SymbolCategory::Activation);
   // Check that tensor views have the same label as their parent symbol. In this
   // case same as "input".
-  EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second.symbolCategory,
+  EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second->symbolCategory,
             glow::runtime::SymbolCategory::PlaceholderTensorView);
 
   // Check that placeholders and constants input/output flags are correctly set.
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.input,
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second->input,
             false);
-  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second.output,
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName().str())->second->output,
             true);
-  EXPECT_EQ(table.find(ex->getName().str())->second.input, false);
-  EXPECT_EQ(table.find(ex->getName().str())->second.output, false);
-  EXPECT_EQ(table.find(input->getName().str())->second.input, true);
-  EXPECT_EQ(table.find(input->getName().str())->second.output, false);
+  EXPECT_EQ(table.find(ex->getName().str())->second->input, false);
+  EXPECT_EQ(table.find(ex->getName().str())->second->output, false);
+  EXPECT_EQ(table.find(input->getName().str())->second->input, true);
+  EXPECT_EQ(table.find(input->getName().str())->second->output, false);
   // HistogramPlaceholder node is not an input node, it is an output node.
   EXPECT_EQ(
-      table.find(qp->getHistogramPlaceholder()->getName().str())->second.input,
+      table.find(qp->getHistogramPlaceholder()->getName().str())->second->input,
       false);
-  EXPECT_EQ(
-      table.find(qp->getHistogramPlaceholder()->getName().str())->second.output,
-      true);
+  EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName().str())
+                ->second->output,
+            true);
   // Check that activations are labelled correctly.
-  EXPECT_EQ(table.find("FC_res")->second.input, false);
-  EXPECT_EQ(table.find("FC_res")->second.output, false);
+  EXPECT_EQ(table.find("FC_res")->second->input, false);
+  EXPECT_EQ(table.find("FC_res")->second->output, false);
   // Check that tensor views are labelled correctly.
-  EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second.input, false);
-  EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second.output, false);
+  EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second->input, false);
+  EXPECT_EQ(table.find("FC_reshape2D_tensorview")->second->output, false);
 }
 
 // Test that using a buffer in a TensorView instruction doesn't get it marked
@@ -590,8 +590,10 @@ TEST(RuntimeBundle, ContiguousPlaceholder) {
   std::vector<glow::runtime::RuntimeSymbolInfo> tableContainer;
   // Only check placeholders.
   for (auto v : table) {
-    if (v.second.symbolCategory == glow::runtime::SymbolCategory::Placeholder) {
-      tableContainer.push_back(v.second);
+    auto &runtimeSymbolInfo = *v.second;
+    if (runtimeSymbolInfo.symbolCategory ==
+        glow::runtime::SymbolCategory::Placeholder) {
+      tableContainer.push_back(runtimeSymbolInfo);
     }
   }
   // Sort the placeholders by offset.

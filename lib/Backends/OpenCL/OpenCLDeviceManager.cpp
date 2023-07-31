@@ -533,8 +533,8 @@ void OpenCLDeviceManager::transferStaticPlaceholderToDevice(
                    llvm::formatv("Symbol {} not found", PH->getName()).str()));
       return;
     }
-    auto offset = symbolIt->second.offset;
-    auto size = symbolIt->second.size;
+    auto offset = symbolIt->second->offset;
+    auto size = symbolIt->second->size;
 
     // Issue a non-blocking command to copy the buffer to the device.
     cl_int err = clEnqueueWriteBuffer(queue.backingQueue, buffer,
@@ -576,7 +576,7 @@ void OpenCLDeviceManager::copyInputsToDevice(
     if (PH.first->isStatic()) {
       continue;
     }
-    auto symbolInfo = it->second;
+    auto symbolInfo = *it->second;
     auto addr = symbolInfo.offset;
     auto numBytes = PH.second.getUnpaddedSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
@@ -616,7 +616,7 @@ void OpenCLDeviceManager::copyOutputsFromDevice(
     if (it == symbolTable.end()) {
       continue;
     }
-    auto symbolInfo = it->second;
+    auto symbolInfo = *it->second;
     auto addr = symbolInfo.offset;
     auto numBytes = PH.second.getUnpaddedSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.

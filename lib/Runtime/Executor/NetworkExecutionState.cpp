@@ -180,7 +180,7 @@ void NetworkExecutionState::init(
     for (const auto &symbolPair : symbolTable) {
       const auto &symbolName = symbolPair.first;
       const auto &symbolInfo = symbolPair.second;
-      if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
+      if (symbolInfo->symbolCategory == SymbolCategory::Placeholder) {
         auto PH = module_->getPlaceholderByNameSlow(symbolName);
 
         DCHECK(PH) << "Placeholder: " << symbolName << " is not in the module";

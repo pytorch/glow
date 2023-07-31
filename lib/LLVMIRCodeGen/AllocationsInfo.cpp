@@ -50,7 +50,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
       allocatedAddress_[w] = allocatedAddress_[c];
       continue;
     }
-    auto &symb = symbolTable_[name];
+    auto &symb = *symbolTable_[name];
     CHECK(valueNumbers_.count(c)) << "Unexpected uncounted constant: " << name;
     symb.index = valueNumbers_[c].second;
     auto addr = symb.offset;
@@ -83,7 +83,7 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
                               << allocatedAddress_[w] << "\n");
       continue;
     }
-    auto &symb = symbolTable_[name];
+    auto &symb = *symbolTable_[name];
     CHECK(valueNumbers_.count(w))
         << "Unexpected uncounted placeholder: " << name << "\n";
     symb.index = valueNumbers_[w].second;
@@ -138,7 +138,7 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
       auto name = std::string(A->getName());
       CHECK(symbolTable_.find(name) != symbolTable_.end())
           << "Expected to find " << name << " in symbol table";
-      auto &symb = symbolTable_[name];
+      auto &symb = *symbolTable_[name];
       CHECK(valueNumbers_.count(A))
           << "Unexpected uncounted activation: " << name;
       symb.index = valueNumbers_[A].second;
@@ -194,7 +194,7 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
       auto &symb = symbolTable_[name];
       CHECK(valueNumbers_.count(TVI))
           << "Unexpected uncounted tensorview: " << std::string(TVI->getName());
-      symb.index = valueNumbers_[TVI].second;
+      symb->index = valueNumbers_[TVI].second;
 
       continue;
     }

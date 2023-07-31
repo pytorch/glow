@@ -88,7 +88,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
 
   for (const auto &symbol : symbolTable_) {
     llvm::StringRef name = symbol.first;
-    const RuntimeSymbolInfo &info = symbol.second;
+    const RuntimeSymbolInfo &info = *symbol.second;
 
     Constant *c = M->getConstantByName(name);
     if (!c) {
@@ -121,7 +121,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const FXIRWrapper *F) {
 
   for (const auto &symbol : symbolTable_) {
     const auto &name = symbol.first;
-    const RuntimeSymbolInfo &info = symbol.second;
+    const RuntimeSymbolInfo &info = *symbol.second;
 
     // Only work with constants/weights here.
     auto category = info.symbolCategory;
@@ -150,7 +150,7 @@ size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
   DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
-  return it->second.offset;
+  return it->second->offset;
 }
 
 const runtime::RuntimeSymbolInfo &
@@ -158,7 +158,7 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
   DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
-  return it->second;
+  return *it->second;
 }
 
 namespace glow {
@@ -462,14 +462,15 @@ static void allocateConstantsImpl(const ConstantsTy &constants,
     }
     auto size = C->getType()->getSizeInBytes();
     auto offset = allocator.allocate(size, C);
-    runtime::RuntimeSymbolInfo symbol;
+    auto symbolPtr = std::make_shared<glow::runtime::RuntimeSymbolInfo>();
+    auto &symbol = *symbolPtr;
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *C->getType();
     symbol.input = false;
     symbol.output = false;
     symbol.symbolCategory = glow::runtime::SymbolCategory::Constant;
-    symbolTable.emplace(C->getName(), symbol);
+    symbolTable.emplace(C->getName(), symbolPtr);
     DEBUG_GLOW(LOG(INFO) << strFormat(
                    "Assigned address to constant %s: %zx (%zd bytes)\n",
                    C->getName().data(), symbol.offset, symbol.size));
@@ -498,14 +499,15 @@ void allocatePlaceholders(const ContiguousPlaceholders &placeholders,
            "Allocation already made!");
     auto size = V->getType()->getSizeInBytes();
     auto offset = allocator.allocate(size, V);
-    runtime::RuntimeSymbolInfo symbol;
+    auto symbolPtr = std::make_shared<glow::runtime::RuntimeSymbolInfo>();
+    auto &symbol = *symbolPtr;
     symbol.offset = offset;
     symbol.size = size;
     symbol.type = *V->getType();
     symbol.output = p.isOutput;
     symbol.input = p.isInput;
     symbol.symbolCategory = glow::runtime::SymbolCategory::Placeholder;
-    symbolTable.emplace(std::string(V->getName()), symbol);
+    symbolTable.emplace(std::string(V->getName()), symbolPtr);
     DEBUG_GLOW(LOG(INFO) << strFormat(
                    "Assigned address to mutable weight %s: %zx (%zd bytes)\n",
                    V->getName().data(), symbol.offset, symbol.size));
@@ -579,14 +581,15 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
       size_t addr = activationsBaseAddr + activationsAllocator.getAddress(A);
       assert(!symbolTable.count(std::string(A->getName())) &&
              "Allocation already made!");
-      runtime::RuntimeSymbolInfo symbol;
+      auto symbolPtr = std::make_shared<glow::runtime::RuntimeSymbolInfo>();
+      auto &symbol = *symbolPtr;
       symbol.offset = addr;
       symbol.size = numBytes;
       symbol.type = *A->getType();
       symbol.input = false;
       symbol.output = false;
       symbol.symbolCategory = glow::runtime::SymbolCategory::Activation;
-      symbolTable.emplace(std::string(A->getName()), symbol);
+      symbolTable.emplace(std::string(A->getName()), symbolPtr);
       DEBUG_GLOW(LOG(INFO) << strFormat(
                      "Assigned address to activation %s: %zx (%zd bytes)\n",
                      A->getName().data(), symbol.offset, symbol.size));
@@ -601,8 +604,9 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
       auto *tvSource = getOrigin(TV);
       assert(symbolTable.count(std::string(tvSource->getName())) &&
              "Source allocation not found!");
-      runtime::RuntimeSymbolInfo symbol;
-      size_t originAddr = symbolTable[std::string(tvSource->getName())].offset;
+      auto symbolPtr = std::make_shared<glow::runtime::RuntimeSymbolInfo>();
+      auto &symbol = *symbolPtr;
+      size_t originAddr = symbolTable[std::string(tvSource->getName())]->offset;
       size_t offset = calculateTensorViewOffset(TV);
 
       symbol.offset = originAddr + offset;
@@ -611,7 +615,7 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
       symbol.input = false;
       symbol.output = false;
       auto parentCategory = symbolTable.find(std::string(tvSource->getName()))
-                                ->second.symbolCategory;
+                                ->second->symbolCategory;
       if (parentCategory == glow::runtime::SymbolCategory::Placeholder) {
         symbol.symbolCategory =
             glow::runtime::SymbolCategory::PlaceholderTensorView;
@@ -619,7 +623,7 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
         symbol.symbolCategory =
             glow::runtime::SymbolCategory::ConstantTensorView;
       }
-      symbolTable.emplace(std::string(TV->getName()), symbol);
+      symbolTable.emplace(std::string(TV->getName()), symbolPtr);
       DEBUG_GLOW(LOG(INFO) << strFormat(
                      "Assigned address to activation %s: %zx (%zd bytes)\n",
                      TV->getName().data(), symbol.offset, symbol.size));
@@ -638,7 +642,7 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
 runtime::RuntimeBundle
 runtime::RuntimeBundle::create(const Function &F,
                                const std::vector<const IRFunction *> &funcs) {
-  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  runtime::SymbolTableTy symbolTable;
   MemoryAllocator allocator("allocator", 0);
   uint64_t constantsMaxMem = 0, placeholdersMaxMem = 0, activationsMaxMem = 0;
 
@@ -672,7 +676,7 @@ runtime::RuntimeBundle::create(const Function &F,
 }
 
 runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
-  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  runtime::SymbolTableTy symbolTable;
 
   MemoryAllocator constants("constants", 0);
   MemoryAllocator placeholders("placeholders", 0);
@@ -708,7 +712,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                      &constantAllocator == &activationsAllocator);
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
-  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  runtime::SymbolTableTy symbolTable;
 
   allocateConstants(F.findConstants(), constantAllocator, symbolTable);
   auto constantMaxSize = constantAllocator.getMaxMemoryUsage();

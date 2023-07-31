@@ -43,7 +43,7 @@ void LLVMCompiledFunction::loadPlaceholders(
       continue;
     }
     assert(!PH.second.isDeviceResident());
-    auto symbolInfo = it->second;
+    auto symbolInfo = *it->second;
     auto payload = PH.second.getUnsafePtr();
     auto addr = symbolInfo.offset;
     auto numBytes = PH.second.getUnpaddedSizeInBytes();
@@ -61,7 +61,7 @@ void LLVMCompiledFunction::updatePlaceholders(
     if (it == symbolTable.end()) {
       continue;
     }
-    auto symbolInfo = it->second;
+    auto symbolInfo = *it->second;
     auto payload = baseMutableWeightVarsAddress + symbolInfo.offset;
     auto numBytes = PH.second.getUnpaddedSizeInBytes();
     auto addr = PH.second.getUnsafePtr();
