@@ -48,6 +48,8 @@ const std::unordered_map<std::string, ElemKind> stringToElemKind = {
     {"acc.uint8fused", ElemKind::UInt8FusedQTy},
     // 4-bit fused quantize type
     {"acc.uint4fused", ElemKind::UInt4FusedQTy},
+    // bool type
+    {"torch.bool", ElemKind::BoolTy},
 };
 }
 
