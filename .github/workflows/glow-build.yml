@@ -49,7 +49,7 @@ jobs:
 
         set -e
         # Build
-        .circleci/build.sh
+        .github/build.sh
 
         # Test
-        .circleci/test.sh
+        .github/test.sh
