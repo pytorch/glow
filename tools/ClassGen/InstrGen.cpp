@@ -1171,7 +1171,6 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Int64, "NumIndices")
       .inplaceOperand({"Dest", "Input"})
       .autoVerify(VerifyKind::NoVerify);
-
   //===--------------------------------------------------------------------===//
   //                Fillers
   //===--------------------------------------------------------------------===//
