@@ -1,0 +1,55 @@
+name: build glow
+
+on:
+  pull_request:
+  push:
+    branches:
+      - nightly
+      - main
+      - release/*
+  workflow_dispatch:
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        python_version: ["3.8"]
+      fail-fast: false
+    uses: pytorch/test-infra/.github/workflows/linux_job.yml@main
+    with:
+      runner: linux.12xlarge
+      repository: pytorch/glow
+      timeout: 120
+      script: |
+        # echo '::group::Setup Environment Variables'
+        # Mark Build Directory Safe
+        # git config --global --add safe.directory /__w/audio/audio
+
+        # Set up Environment Variables
+        export PYTHON_VERSION="${{ matrix.python_version }}"
+
+        # Set CHANNEL
+        if [[(${GITHUB_EVENT_NAME} = 'pull_request' && (${GITHUB_BASE_REF} = 'release'*)) || (${GITHUB_REF} = 'refs/heads/release'*) ]]; then
+          export UPLOAD_CHANNEL=test
+        else
+          export UPLOAD_CHANNEL=nightly
+        fi
+
+        original_pwd=$(pwd)
+        sudo apt-get update;
+        mkdir ~/tempdownload;
+        cd ~/tempdownload;
+        wget https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-8.1p1.tar.gz;
+        tar zxvf openssh-8.1p1.tar.gz;
+        cd openssh-8.1p1 && ./configure && make && sudo make install;
+
+        cd $original_pwd
+        git submodule sync
+        git submodule update --recursive --init
+
+        set -e
+        # Build
+        .github/build.sh
+
+        # Test
+        .github/test.sh
