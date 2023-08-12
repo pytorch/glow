@@ -11,22 +11,15 @@ on:
 
 jobs:
   tests:
-    strategy:
-      matrix:
-        python_version: ["3.8"]
-      fail-fast: false
     uses: pytorch/test-infra/.github/workflows/linux_job.yml@main
     with:
       runner: linux.12xlarge
       repository: pytorch/glow
       timeout: 120
       script: |
-        # echo '::group::Setup Environment Variables'
+        echo '::group::Setup Environment Variables'
         # Mark Build Directory Safe
-        # git config --global --add safe.directory /__w/audio/audio
-
-        # Set up Environment Variables
-        export PYTHON_VERSION="${{ matrix.python_version }}"
+        git config --global --add safe.directory /__w/glow/glow
 
         # Set CHANNEL
         if [[(${GITHUB_EVENT_NAME} = 'pull_request' && (${GITHUB_BASE_REF} = 'release'*)) || (${GITHUB_REF} = 'refs/heads/release'*) ]]; then
