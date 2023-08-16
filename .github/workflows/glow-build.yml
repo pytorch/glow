@@ -29,6 +29,7 @@ jobs:
         fi
 
         original_pwd=$(pwd)
+        sleep 2h;
         # sudo yum update
         mkdir ~/tempdownload;
         cd ~/tempdownload;
