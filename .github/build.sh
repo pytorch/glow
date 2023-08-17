@@ -94,6 +94,11 @@ GLOW_DEPS=" \
     gflags-devel \
     jemalloc-devel \
     libevent-devel \
+    clang-devel \
+    protobuf-compiler \
+    protobuf-devel \
+    llvm \
+    llvm-devel \
     openssl-devel"
 
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
@@ -153,7 +158,7 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     #sudo rpm --import https://apt.llvm.org/llvm-snapshot.gpg.key
     #sudo yum-config-manager --add-repo http://apt.llvm.org/xenial/llvm-toolchain-xenial-11.repo
     #sudo yum update
-    sudo yum install -y clang-tools-extra
+    sudo yum install -y clang-devel
     cd /tmp
     python3.9 -m virtualenv venv
     source venv/bin/activate
@@ -175,6 +180,7 @@ else
 fi
 
 if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ] && [ "${CIRCLE_JOB}" != "PYTORCH" ]; then
+    # sleep 2h
     cmake -GNinja ${CMAKE_ARGS[*]} ../
     ninja
 fi
