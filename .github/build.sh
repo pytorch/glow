@@ -180,7 +180,7 @@ else
 fi
 
 if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ] && [ "${CIRCLE_JOB}" != "PYTORCH" ]; then
-    # sleep 2h
+    sleep 2h
     cmake -GNinja ${CMAKE_ARGS[*]} ../
     ninja
 fi
