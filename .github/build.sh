@@ -5,10 +5,10 @@
 set -ex
 
 # Add support for https apt sources.
-wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.2_amd64.deb
-echo "93475e4cc5e7a86de63fea0316f3f2cd8b791cf4d6ea50a6d63f5bd8e1da5726  apt-transport-https_1.2.32ubuntu0.2_amd64.deb" | sha256sum -c
-sudo dpkg -i apt-transport-https_1.2.32ubuntu0.2_amd64.deb
-rm apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+# wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+# echo "93475e4cc5e7a86de63fea0316f3f2cd8b791cf4d6ea50a6d63f5bd8e1da5726  apt-transport-https_1.2.32ubuntu0.2_amd64.deb" | sha256sum -c
+# sudo dpkg -i apt-transport-https_1.2.32ubuntu0.2_amd64.deb
+# rm apt-transport-https_1.2.32ubuntu0.2_amd64.deb
 
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
@@ -27,7 +27,8 @@ if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
 fi
 
 install_pocl() {
-   sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev opencl-headers
+   # sudo yum install -y ocl-icd-opencl-dev clinfo libhwloc-dev opencl-headers
+
 
    git clone https://github.com/pocl/pocl.git
    cd pocl && git checkout 4efafa82c087b5e846a9f8083d46b3cdac2f698b && cd ../
@@ -57,12 +58,12 @@ install_fmt() {
 
 upgrade_python() {
     echo "Removing old python...";
-    sudo apt-get remove --purge -y python3.6 python3-pip libpython3-dev
-    sudo apt-get autoremove -y
+    # sudo yum remove --purge -y python3.6 python3-pip libpython3-dev
+    # sudo yum autoremove -y
 
     echo "Installing dependencies for new python..."
-    sudo apt-get update
-    sudo apt-get install -y libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev
+    # sudo yum update
+    # sudo yum install -y libreadline-gplv2-dev libncursesw5-dev libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev
 
     echo "Installing new python..."
     mkdir python-src
@@ -85,14 +86,22 @@ upgrade_python() {
     sudo pip3.9 install virtualenv
 }
 
-GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
+GLOW_DEPS=" \
+    libpng-devel \
+    glog-devel \
+    boost-devel \
+    double-conversion-devel \
+    gflags-devel \
+    jemalloc-devel \
+    libevent-devel \
+    openssl-devel"
 
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-    sudo apt-get update
+    #sudo yum update
     upgrade_python
 else
     # Install Glow dependencies
-    sudo apt-get update
+    #sudo yum update
 
     # Redirect clang
     sudo ln -s /usr/bin/clang-8 /usr/bin/clang
@@ -100,7 +109,7 @@ else
     sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
     sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
 
-    sudo apt-get install -y ${GLOW_DEPS}
+    sudo yum install -y ${GLOW_DEPS}
     install_fmt
 fi
 
@@ -108,7 +117,7 @@ fi
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo pip install cmake==3.17.3
 else
-    sudo apt-get install cmake
+    sudo yum install -y cmake
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
@@ -131,8 +140,8 @@ if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
 elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
-    sudo apt-get install wget
-    sudo apt-get install -y lcov
+    sudo yum install -y wget
+    sudo yum install -y lcov
     sudo pip install awscli --upgrade
     ../utils/install_protobuf.sh
     CC=gcc-5 CXX=g++-5 cmake -G Ninja \
@@ -141,10 +150,10 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           -DGLOW_USE_COVERAGE=ON \
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
-    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-    sudo apt-add-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-11 main"
-    sudo apt-get update
-    sudo apt-get install -y clang-format-11
+    #sudo rpm --import https://apt.llvm.org/llvm-snapshot.gpg.key
+    #sudo yum-config-manager --add-repo http://apt.llvm.org/xenial/llvm-toolchain-xenial-11.repo
+    #sudo yum update
+    sudo yum install -y clang-tools-extra
     cd /tmp
     python3.9 -m virtualenv venv
     source venv/bin/activate
