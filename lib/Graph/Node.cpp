@@ -248,16 +248,27 @@ bool Node::isArithmetic() const {
 
   switch (getKind()) {
     ARITHMETIC_NODE_CASE(Add)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(Mul)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(Sub)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(Div)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(FloorDiv)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(Max)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(Min)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(CmpLTE)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(CmpLT)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(CmpEQ)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(Pow)
+    [[fallthrough]];
     ARITHMETIC_NODE_CASE(Fmod)
     return true;
   default:
