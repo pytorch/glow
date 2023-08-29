@@ -5287,19 +5287,32 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       bool addNewNodeToWorklist = false;
       switch (RS->getInput().getNode()->getKind()) {
       case Kinded::Kind::RescaleQuantizedNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::QuantizeNodeKind:
         addNewNodeToWorklist = true;
+        [[fallthrough]];
       case Kinded::Kind::SplatNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::AddNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::SubNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::MulNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::DivNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::FmodNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::MinNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::MatMulNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::ConvolutionNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::FullyConnectedNodeKind:
+        [[fallthrough]];
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
         changed = true;
         Node *newNode =

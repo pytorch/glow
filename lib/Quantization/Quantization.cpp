@@ -325,15 +325,15 @@ protected:
   /// where the macro is inserted to keep the nice code formatting.
   // clang-format off
 #define CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE                                  \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(LocalResponseNormalization, Input, Result):  \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(Slice, Input, Result):                       \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(Reshape, Input, Result):                     \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(Transpose, Input, Result):                   \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(TopK, Input, Values):                        \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(Gather, Data, Result):                       \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result):                     \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeNearest, Input, Result):               \
-  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeBilinear, Input, Result):              \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(LocalResponseNormalization, Input, Result): [[fallthrough]];  \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Slice, Input, Result): [[fallthrough]];                       \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Reshape, Input, Result): [[fallthrough]];                     \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Transpose, Input, Result): [[fallthrough]];                   \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(TopK, Input, Values): [[fallthrough]];                        \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Gather, Data, Result): [[fallthrough]];                       \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result): [[fallthrough]];                     \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeNearest, Input, Result): [[fallthrough]];               \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(ResizeBilinear, Input, Result): [[fallthrough]];              \
   CASE_SINGLE_MATCHING_INOUT_TYPE(SpaceToDepth, Input, Result)
   // clang-format on
 
