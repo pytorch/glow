@@ -25,6 +25,8 @@ using namespace glow;
 
 namespace {
 const std::unordered_map<std::string, ElemKind> stringToElemKind = {
+    // 64-bit float type
+    {"torch.float64", ElemKind::Float64Ty},
     // 32-bit float type
     {"torch.float32", ElemKind::FloatTy},
     {"torch.float", ElemKind::FloatTy},
