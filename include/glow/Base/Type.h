@@ -816,6 +816,10 @@ struct Type final {
   /// always <= actualSize().
   size_t actualSize() const { return getSizeInBytes() / getElementSize(); }
 
+  /// make sure that the size of double is 8 bytes and the size of float is 4.
+  static_assert(sizeof(double) == 8, "sizeof(double) is not 64 bits");
+  static_assert(sizeof(float) == 4, "sizeof(float) is not 32 bits");
+
   /// \return the size of the element \p Ty.
   static unsigned getElementSize(ElemKind Ty) {
     switch (Ty) {
