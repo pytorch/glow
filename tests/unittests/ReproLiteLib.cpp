@@ -16,7 +16,7 @@
 
 #include "glow/glow/tests/unittests/ReproLiteLib.h"
 #include "glow/glow/lib/Backends/FBA/FBABackend.h"
-#include "mtia/host_runtime/data_bundle/raw_data_bundle.h"
+#include "mtia/host_runtime/mini_runner/data_bundle/raw_data_bundle.h"
 #include <filesystem>
 #include <folly/dynamic.h>
 #include <folly/json.h>
