@@ -79,10 +79,12 @@ std::string glow::getNodeTarget(const folly::dynamic &node) {
   return node["target"].getString();
 }
 
-ElemKind glow::getNodeDataType(const folly::dynamic &node) {
+ElemKind glow::getNodeDataType(const folly::dynamic &node, int idx) {
   CHECK(node.find("dtype") != node.items().end())
       << "dtype field doesn't exist in node " << node;
-  return getElemKind(node.at("dtype").getString());
+  auto s = idx < 0 ? node.at("dtype").getString()
+                   : node.at("dtype").at(idx).getString();
+  return getElemKind(s);
 }
 
 double glow::getNodeScale(const folly::dynamic &node) {
@@ -140,10 +142,18 @@ bool glow::hasFxOutTensorView(const folly::dynamic &node) {
   return kwargs.find("out_memref") != kwargs.items().end();
 }
 
-const folly::dynamic &glow::getFxOutTensorView(const folly::dynamic &node) {
+const folly::dynamic &glow::getFxOutTensorView(const folly::dynamic &node,
+                                               int idx) {
   const auto &kwargs = getNodeKwargs(node);
   CHECK(hasFxOutTensorView(node)) << "Node must have 'out_memref'\n";
-  return kwargs["out_memref"];
+  const auto &out = kwargs["out_memref"];
+  if (idx < 0) {
+    CHECK(out.isObject());
+    return out;
+  }
+  CHECK(out.isArray() && idx < out.size());
+  CHECK(out.at(idx).isObject());
+  return out.at(idx);
 }
 
 std::vector<dim_t> glow::getOffsets(const folly::dynamic &node) {
@@ -158,13 +168,13 @@ std::vector<dim_t> glow::getOffsets(const folly::dynamic &node) {
 }
 
 //======================================================================
-std::string glow::getNodeShapeAsString(const folly::dynamic &node) {
-  return glow::getNodeItemAsString(node, "shape");
+std::string glow::getNodeShapeAsString(const folly::dynamic &node, int idx) {
+  return glow::getNodeItemAsString(node, "shape", idx);
 }
 
 //======================================================================
-std::string glow::getNodeStrideAsString(const folly::dynamic &node) {
-  return getNodeItemAsString(node, "stride");
+std::string glow::getNodeStrideAsString(const folly::dynamic &node, int idx) {
+  return getNodeItemAsString(node, "stride", idx);
 }
 
 //======================================================================
@@ -188,17 +198,23 @@ std::string glow::getNodeOffsetsAsString(const folly::dynamic &node) {
 // returns the shape from the destination node.
 //======================================================================
 std::string glow::getNodeItemAsString(const folly::dynamic &node,
-                                      const char *itemName) {
+                                      const char *itemName, int idx) {
   if (node.find("kwargs") != node.items().end()) {
     const auto &kwargs = getNodeKwargs(node);
     if (kwargs.find("out_memref") != kwargs.items().end()) {
       const auto &out_memref = kwargs["out_memref"]; // out tensor view
+      if (idx > -1) {
+        return out_memref.at(idx).at(itemName).getString();
+      }
       return out_memref.at(itemName).getString();
     }
   }
   CHECK(node.find(itemName) != node.items().end())
       << "Neither " << itemName << " nor out_memref exists in node " << node
       << "\n";
+  if (idx > -1) {
+    return node.at(itemName).at(idx).getString();
+  }
   return node.at(itemName).getString();
 }
 

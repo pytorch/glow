@@ -103,31 +103,50 @@ std::string getNodeName(const folly::dynamic &node);
 /// Get the target of the node.
 std::string getNodeTarget(const folly::dynamic &node);
 
-/// Get the data type of the node.
-ElemKind getNodeDataType(const folly::dynamic &node);
+/// Get the data type of the node. \p idx represents which output to get a
+/// result for in the case that the node has multiple outputs; if it's a single
+/// output then should be left to -1.
+ElemKind getNodeDataType(const folly::dynamic &node, int idx = -1);
 
 bool hasFxOutTensorView(const folly::dynamic &node);
 
-const folly::dynamic &getFxOutTensorView(const folly::dynamic &node);
+/// Get out tensorview for \p node. If \p idx is non-negative then assume this
+/// is a multi-output node, so get the tensorview output for that specific idx.
+/// \p idx represents which output to get a result for in the case that the node
+/// has multiple outputs; if it's a single output then should be left to -1.
+const folly::dynamic &getFxOutTensorView(const folly::dynamic &node,
+                                         int idx = -1);
 
+/// \returns specific item \p itemName from \p node. \p idx represents which
+/// output to get a result for in the case that the node has multiple outputs;
+/// if it's a single output then should be left to -1.
 std::string getNodeItemAsString(const folly::dynamic &node,
-                                const char *itemName);
-std::string getNodeShapeAsString(const folly::dynamic &node);
-std::string getNodeStrideAsString(const folly::dynamic &node);
+                                const char *itemName, int idx = -1);
+std::string getNodeShapeAsString(const folly::dynamic &node, int idx = -1);
+std::string getNodeStrideAsString(const folly::dynamic &node, int idx = -1);
 
 template <class T>
-std::vector<T> getNodeItem(const folly::dynamic &node, const char *itemName) {
-  const std::string itemString = getNodeItemAsString(node, itemName);
+std::vector<T> getNodeItem(const folly::dynamic &node, const char *itemName,
+                           int idx = -1) {
+  const std::string itemString = getNodeItemAsString(node, itemName, idx);
   return toIntegerArray<glow::dim_t>(itemString);
 }
 
-template <class T> std::vector<T> getNodeShape(const folly::dynamic &node) {
-  const std::string shapeString = getNodeShapeAsString(node);
+/// \returns the shape from \p node. \p idx represents which output to get a
+/// result for in the case that the node has multiple outputs; if it's a single
+/// output then should be left to -1.
+template <class T>
+std::vector<T> getNodeShape(const folly::dynamic &node, int idx = -1) {
+  const std::string shapeString = getNodeShapeAsString(node, idx);
   return toIntegerArray<glow::dim_t>(shapeString);
 }
 
-template <class T> std::vector<T> getNodeStride(const folly::dynamic &node) {
-  const std::string strideString = getNodeStrideAsString(node);
+/// \returns the stride from \p node. \p idx represents which output to get a
+/// result for in the case that the node has multiple outputs; if it's a single
+/// output then should be left to -1.
+template <class T>
+std::vector<T> getNodeStride(const folly::dynamic &node, int idx = -1) {
+  const std::string strideString = getNodeStrideAsString(node, idx);
   return toIntegerArray<glow::dim_t>(strideString);
 }
 

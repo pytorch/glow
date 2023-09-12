@@ -23,7 +23,7 @@ from torch.autograd import Variable
 # Refer to https://pytorch.org/docs/stable/onnx.html
 
 
-class PyTorchPretrainedModel(object):
+class PyTorchPretrainedModel:
     def __init__(self, model_name):
         self.model_name = model_name
         method_to_call = getattr(torchvision.models, self.model_name)
