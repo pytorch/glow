@@ -74,6 +74,8 @@ class RuntimeBundle {
   size_t mutableWeightVarsMemSize_{0};
   /// Amount of memory needed for activations.
   size_t activationsMemSize_{0};
+  /// Amount of memory needed for runtime scratch pad.
+  size_t runtimeScratchPadMemSize_{0};
   /// True if the RuntimeBundle is valid, false if not.
   bool isValid_{false};
 
@@ -97,6 +99,10 @@ public:
   void updateSymbolTable(const SymbolTableTy &symbolTable) {
     symbolTable_ = symbolTable;
   }
+  void setRuntimeScratchPadSize(const size_t s) {
+    runtimeScratchPadMemSize_ = s;
+  }
+  size_t getRuntimeScratchPadSize() const { return runtimeScratchPadMemSize_; }
   /// At compile time condense constants to a single block of memory.
   /// This allows the graph to go away after compile time.
   /// Allocates a block of memory of size \p constantMaxSize then walks the
@@ -152,6 +158,15 @@ public:
         constantWeightVarsMemSize_(constWeight),
         mutableWeightVarsMemSize_(mutableWeight),
         activationsMemSize_(activations), isValid_(true) {}
+
+  RuntimeBundle(SymbolTableTy &symbolTable, size_t constWeight,
+                size_t mutableWeight, size_t activations,
+                size_t runtimeScratchPad)
+      : symbolTable_(std::move(symbolTable)), constants_(nullptr),
+        constantWeightVarsMemSize_(constWeight),
+        mutableWeightVarsMemSize_(mutableWeight),
+        activationsMemSize_(activations),
+        runtimeScratchPadMemSize_(runtimeScratchPad), isValid_(true) {}
 
   // Explicit copy constructor and deleted assignment operator. A RuntimeBundle
   // should be moved. It should only be copied if absolutely necessary and never

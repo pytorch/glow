@@ -52,6 +52,7 @@ glow::runtime::RuntimeBundle::operator=(glow::runtime::RuntimeBundle &&rhs) {
   std::swap(constantWeightVarsMemSize_, rhs.constantWeightVarsMemSize_);
   std::swap(mutableWeightVarsMemSize_, rhs.mutableWeightVarsMemSize_);
   std::swap(activationsMemSize_, rhs.activationsMemSize_);
+  std::swap(runtimeScratchPadMemSize_, rhs.runtimeScratchPadMemSize_);
   std::swap(isValid_, rhs.isValid_);
   // rhs is not valid now that all of its contents have been stolen.
   rhs.isValid_ = false;

@@ -154,6 +154,8 @@ protected:
   llvm::Value *baseConstantWeightVarsAddr_{nullptr};
   /// Value holding the base address of mutable WeightVars memory area.
   llvm::Value *baseMutableWeightVarsAddr_{nullptr};
+  /// Value holding the base address of runtime scratch pad.
+  llvm::Value *baseRuntimeScratchPadAddr_{nullptr};
   /// Value holding the address of the offsets array.
   llvm::Value *offsetsArray_{nullptr};
   /// Maps constant arrays to the constant expressions representing size_t
