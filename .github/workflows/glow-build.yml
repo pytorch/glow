@@ -46,21 +46,5 @@ jobs:
         set -e
         # Build
         chmod +x .github/build.sh .github/test.sh
-
-        export CIRCLE_JOB=FEATURE_COMPILATION
+        export CIRCLE_JOB=OPENCL
         .github/build.sh
-
-        export CIRCLE_JOB=ASAN
-        .github/build.sh
-
-        export CIRCLE_JOB=CHECK_CLANG_AND_PEP8_FORMAT
-        .github/build.sh
-
-        export CIRCLE_JOB=DEBUG
-        .github/build.sh
-
-        export CIRCLE_JOB=32B_DIM_T
-        .github/build.sh
-
-        # Test
-        .github/test.sh
