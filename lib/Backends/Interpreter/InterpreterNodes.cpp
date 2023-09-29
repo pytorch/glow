@@ -2248,6 +2248,11 @@ void BoundInterpreterFunction::fwdPrunedArrayLookupInst(
   llvm_unreachable("PrunedArrayLookup instruction is not supported yet");
 }
 
+void BoundInterpreterFunction::fwdBoundsCheckIndicesInst(
+    const BoundsCheckIndicesInst *) {
+  llvm_unreachable("BoundsCheckIndices instruction is not supported yet");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdTanhInstFloatImpl(const TanhInst *I) {
   staticAssertFloatingPointType(ElemTy);

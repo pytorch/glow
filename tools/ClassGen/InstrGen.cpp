@@ -1163,6 +1163,19 @@ int main(int argc, char **argv) {
                   {"IndexRemapping", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"IndexRemappingOffsets", "ElemKind::Int64ITy"});
+
+  BB.newInstr("BoundsCheckIndices")
+      .addOperand("RowsPerTable", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addOperand("Warning", OperandKind::Out)
+      .addOperand("Weights", OperandKind::In)
+      .addMember(MemberType::Unsigned, "BoundsCheckMode")
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int32ITy"});
+
   BB.newInstr("IndexPut")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
