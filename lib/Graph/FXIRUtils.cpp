@@ -148,7 +148,8 @@ const folly::dynamic &glow::getFxOutTensorView(const folly::dynamic &node,
   CHECK(hasFxOutTensorView(node)) << "Node must have 'out_memref'\n";
   const auto &out = kwargs["out_memref"];
   if (idx < 0) {
-    CHECK(out.isObject());
+    CHECK(out.isObject())
+        << "Expected Node object given unspecified multi-output idx";
     return out;
   }
   CHECK(out.isArray() && idx < out.size());
