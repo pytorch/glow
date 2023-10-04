@@ -22,3 +22,6 @@
 [submodule "thirdparty/folly"]
 	path = thirdparty/folly
 	url = https://github.com/facebook/folly.git
+[submodule "lib/Backends/CMSIS/CMSIS-NN"]
+	path = lib/Backends/CMSIS/CMSIS-NN
+	url = https://github.com/ARM-software/CMSIS-NN.git

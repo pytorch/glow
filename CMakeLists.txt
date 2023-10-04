@@ -10,6 +10,7 @@ option(GLOW_WITH_LLVMIRCODEGEN "Build the LLVM-based code generation library" ON
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" OFF)
 option(GLOW_WITH_NNPI "Build the NNPI backend" OFF)
 option(GLOW_WITH_HABANA "Build the Habana backend" OFF)
+option(GLOW_WITH_CMSIS "Build the CMSIS backend" OFF)
 option(GLOW_USE_PNG_IF_REQUIRED "Link with libpng if required" ON)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_PYTORCH_INTEGRATION "Build integration for PyTorch" OFF)
@@ -157,6 +158,10 @@ if (GLOW_WITH_HABANA)
     "${TPCSIM_SHARED_LIB}"
     "${HL_THUNK_LIB}")
 endif ()
+
+if (GLOW_WITH_CMSIS)
+  add_definitions(-DGLOW_WITH_CMSIS=1)
+endif()
 
 set(LLVMCPURuntimeExtraFlags)
 if (TENSOR_DIMS_32_BITS)
