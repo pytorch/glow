@@ -231,3 +231,14 @@ bool glow::isOutputFXNode(const folly::dynamic &node) {
            (node.count("ph_type") != 0 &&
             node["ph_type"].getString() == "output_ph")));
 }
+
+bool glow::isConstantWeightFXNode(const folly::dynamic &node) {
+  return node["op_code"].getString() == "get_attr" ||
+         (node["op_code"].getString() == "call_function" &&
+          node["target"].getString() == "acc_ops.xl_weight");
+}
+
+bool glow::isActivationFXNode(const folly::dynamic &node) {
+  return (node["op_code"].getString() == "call_function" &&
+          node["target"].getString() == "fba_ops.fba_alloc_activation");
+}
