@@ -57,6 +57,8 @@ struct RuntimeSymbolInfo {
   /// it is also used in runtime to generate tensor metadata,
   /// when eager mode is enabled.
   int index{-1};
+  /// Index of the the memory region this symbol belongs to.
+  int memoryRegionIndex{-1};
 };
 
 using SymbolTableTy = std::map<std::string, std::shared_ptr<RuntimeSymbolInfo>>;

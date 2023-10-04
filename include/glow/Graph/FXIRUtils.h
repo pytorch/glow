@@ -234,6 +234,8 @@ std::vector<dim_t> getOffsets(const folly::dynamic &node);
 
 bool isInputFXNode(const folly::dynamic &node);
 bool isOutputFXNode(const folly::dynamic &node);
+bool isConstantWeightFXNode(const folly::dynamic &node);
+bool isActivationFXNode(const folly::dynamic &node);
 
 } // namespace glow
 
