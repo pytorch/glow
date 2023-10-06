@@ -40,10 +40,6 @@ std::string GetNNPIKernels::getCompiledDSPKernelsFilePath() {
   // file manually.
   std::string path;
 
-#if FACEBOOK_INTERNAL
-  path = GetNNPIKernels::getCompiledDSPKernelsFilePathInternal();
-#endif
-
   return path;
 }
 

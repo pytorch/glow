@@ -31,7 +31,6 @@ struct GetNNPIKernels {
 
 #if FACEBOOK_INTERNAL
   static std::string getCompiledIAKernelsFilePathInternal();
-  static std::string getCompiledDSPKernelsFilePathInternal();
 #endif
 };
 
