@@ -75,12 +75,6 @@ public:
   ///@{
   NNPICompiledFunction(Function *F);
 
-#if FACEBOOK_INTERNAL
-  NNPICompiledFunction(const folly::dynamic &FXIR, const std::string &submod,
-                       const llvm::StringMap<const void *> &constants,
-                       Module *glowModule);
-#endif
-
   ~NNPICompiledFunction() override;
 
   /// Execute the network and allocate Placeholder memory with given
@@ -124,12 +118,6 @@ public:
   virtual void freeCompilationResources() override;
 
   virtual Error compile(Function *F, const BackendOptions &opts);
-
-#if FACEBOOK_INTERNAL
-  Error compileFX(const folly::dynamic &FXIR, const std::string &submod,
-                  const llvm::StringMap<const void *> &constants,
-                  const BackendOptions &opts, Module *glowModule);
-#endif
 
   NNPICompilationOptions getCompilationOptions() const {
     return compilationOptions_;
