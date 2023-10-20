@@ -275,7 +275,7 @@ def gen_select_test(name, input_shape):
     model = Model(inputs=[cond, lhs, rhs], outputs=[out])
     # Create data.
     np.random.seed(0)
-    cond_tensor = np.random.randint(low=0, high=2, size=input_shape).astype(np.bool)
+    cond_tensor = np.random.randint(low=0, high=2, size=input_shape).astype(bool)
     lhs_tensor = np.random.rand(*input_shape).astype(np.float32)
     rhs_tensor = np.random.rand(*input_shape).astype(np.float32)
     out_tensor = model.predict([cond_tensor, lhs_tensor, rhs_tensor])
