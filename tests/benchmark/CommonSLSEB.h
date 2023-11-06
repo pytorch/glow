@@ -690,5 +690,5 @@ inline void printSummary(const std::string &runPrefix,
   printf("BenchSummary,%s,%f,%f,%f,%f\n", runPrefix.c_str(), medianRuntime,
          minRuntime, gb / medianRuntime, gb / minRuntime);
 }
-} // namespace benchmark
-} // namespace glow
+}; // namespace benchmark
+}; // namespace glow

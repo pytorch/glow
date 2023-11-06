@@ -96,7 +96,7 @@ Node *fixNonZero(Function *F, Module &mod, const std::string opName,
 
   return withMinusOnesInt;
 }
-} // namespace glow
+}; // namespace glow
 
 /// Legacy padding modes supported in caffe2.  These are used by MaxPool
 /// operators, and are defined in caffe2_legacy.proto in the caffe2 source

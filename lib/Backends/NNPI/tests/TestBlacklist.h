@@ -96,4 +96,4 @@ void prepareBlacklist(const std::vector<TestSetup> &testBlacklistedSetups,
     }
   }
 }
-} // namespace TestBlacklist
+}; // namespace TestBlacklist

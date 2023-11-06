@@ -542,6 +542,6 @@ struct CompilationContext {
 
 using CompilationMode = CompilationContext::CompilationMode;
 
-} // namespace glow
+}; // namespace glow
 
 #endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_COMPILATIONCONTEXT_H

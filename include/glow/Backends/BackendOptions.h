@@ -99,6 +99,6 @@ struct BackendOptions {
 
 #undef PRINT_VALUE
 
-} // namespace glow
+}; // namespace glow
 
 #endif // GLOW_BACKENDS_BACKENDOPTIONS_H
