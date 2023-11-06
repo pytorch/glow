@@ -408,4 +408,4 @@ Expected<TypeRef> ProtobufLoader::loadQuantTy(const std::string &name,
   return mod_.uniqueType(k, dims, dummyScale, thisUniqueOffset);
 }
 
-}; // namespace glow
+} // namespace glow

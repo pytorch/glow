@@ -842,7 +842,7 @@ public:
     cleanUp();
     assert(function_.verify() && "Conversion led to invalid function");
   }
-}; // namespace
+} // namespace
 
 } // namespace
 
