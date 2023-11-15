@@ -455,6 +455,9 @@ llvm::Type *LLVMIRGen::getLLVMPtrType(glow::ElemKind kind) {
   case ElemKind::BoolTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
+  case ElemKind::Float64Ty:
+    T = llvm::Type::getDoubleTy(getLLVMContext());
+    break;
   default:
     LOG(FATAL) << "Unsupported element type: "
                << Type::getElementName(kind).str();
@@ -665,6 +668,10 @@ llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
 
 llvm::Value *LLVMIRGen::emitConstF32(llvm::IRBuilder<> &builder, float val) {
   return llvm::ConstantFP::get(llvm::Type::getFloatTy(getLLVMContext()), val);
+}
+
+llvm::Value *LLVMIRGen::emitConstF64(llvm::IRBuilder<> &builder, double val) {
+  return llvm::ConstantFP::get(llvm::Type::getDoubleTy(getLLVMContext()), val);
 }
 
 llvm::Value *LLVMIRGen::emitConstI64(llvm::IRBuilder<> &builder, int64_t val) {
