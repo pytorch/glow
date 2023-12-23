@@ -31,8 +31,6 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
-extern llvm::cl::opt<bool> dumpLLVMIR;
-
 extern llvm::cl::opt<bool> dumpLLVMAsm;
 
 extern llvm::cl::opt<bool> emitDebugInfo;

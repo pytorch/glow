@@ -47,11 +47,6 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 llvm::cl::opt<bool>
-    dumpLLVMIR("dump-llvm-ir",
-               llvm::cl::desc("Dump the LLVM-IR of the jitted code"),
-               llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
-
-llvm::cl::opt<bool>
     dumpLLVMAsm("dump-llvm-asm",
                 llvm::cl::desc("Dump the textual assembly of the jitted code"),
                 llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
@@ -354,10 +349,6 @@ void LLVMIRGen::performCodeGen() {
 }
 
 void LLVMIRGen::finishCodeGen() {
-  if (dumpLLVMIR) {
-    llvm::outs() << "LLVM module before optimizations:\n";
-    dump();
-  }
   // Perform verification if no debug info is being emitted.
   // Otherwise, the verification is performed later by
   // generateDebugInfo, once the debug info emission is finalized.
@@ -377,11 +368,6 @@ void LLVMIRGen::finishCodeGen() {
 
   // Generate debug information.
   generateModuleDebugInfo();
-
-  if (dumpLLVMIR) {
-    llvm::outs() << "LLVM module after optimizations:\n";
-    dump();
-  }
 
   if (dumpLLVMAsm) {
     llvm::SmallVector<char, 0> asmBuffer;
