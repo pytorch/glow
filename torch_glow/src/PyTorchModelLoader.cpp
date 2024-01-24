@@ -2814,7 +2814,7 @@ Error PyTorchModelLoader::loadQuantizedLeakyRelu(
                                  inputs[QuantizedLeakyReluInputs::alpha])));
 
   // inplace
-  bool inplace;
+  [[maybe_unused]] bool inplace;
   ASSIGN_VALUE_OR_RETURN_ERR(inplace,
                              iValToBool(getGlowIValueForValue(
                                  inputs[QuantizedLeakyReluInputs::inplace])));
@@ -8473,7 +8473,7 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
 
   RETURN_ERR_IF_NOT(mode == 0, "Currently only support mode='sum'");
 
-  bool sparse;
+  [[maybe_unused]] bool sparse;
   ASSIGN_VALUE_OR_RETURN_ERR(sparse, iValToBool(getGlowIValueForValue(
                                          inputs[EmbeddingBagInputs::sparse])));
 
