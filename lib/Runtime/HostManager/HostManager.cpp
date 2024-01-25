@@ -901,7 +901,6 @@ Error HostManager::runNetworkBlocking(
 }
 
 void HostManager::dispatchNextRun() {
-  int requestId = -1;
   llvm::Optional<InferRequest> pRequest;
   std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
   {
@@ -913,7 +912,6 @@ void HostManager::dispatchNextRun() {
       // provides a const ref to the top element, since we need to move
       // it we first cast it to remove the const.
       pRequest = std::move(const_cast<InferRequest &>(inferQueue_.top()));
-      requestId = static_cast<int>(pRequest->requestID);
       inferQueue_.pop();
     } else {
       // Decrement the activeRequest counter so new requests can
