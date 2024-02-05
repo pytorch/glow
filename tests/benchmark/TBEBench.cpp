@@ -125,8 +125,7 @@ public:
       // For 4bit tables the number of bytes should be halved (rounded up).
       numBytePerRow = (numBytePerRow + 1) / 2;
     } else if (param.fusedDtype_ == ElemKind::UInt8FusedQTy) {
-      // For 8bit tables.
-      numBytePerRow = numBytePerRow;
+      // For 8bit tables numBytePerRow is already correct
     } else { // (param.fusedDtype_ == ElemKind::FP16QTy)
       // For 16bit tables.
       numBytePerRow = numBytePerRow * 2;
