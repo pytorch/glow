@@ -33,6 +33,7 @@ const std::unordered_map<std::string, ElemKind> stringToElemKind = {
     // 16-bit float type
     {"torch.float16", ElemKind::Float16Ty},
     {"torch.half", ElemKind::Float16Ty},
+    {"torch.bfloat16", ElemKind::BFloat16Ty},
     // 64-bit int type
     {"torch.int64", ElemKind::Int64ITy},
     // 64-bit int type
