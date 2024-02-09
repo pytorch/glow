@@ -65,6 +65,9 @@ public:
       const auto &nodeName = node["name"].getString();
       namedNodes_.try_emplace(nodeName, node);
     }
+    for (const auto &pair : fx_mod_->at("weights").items()) {
+      auto it = namedNodes_.try_emplace(pair.first.getString(), pair.second);
+    }
   }
 
   ~FXIRWrapper() override = default;
