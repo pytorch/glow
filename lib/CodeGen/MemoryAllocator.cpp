@@ -48,7 +48,7 @@ float MemoryAllocator::getAllocationEfficiency() const {
   } else {
     return 0;
   }
-};
+}
 
 uint64_t MemoryAllocator::getEffectiveSize(uint64_t size) const {
   return alignedSize(size, alignment_);
