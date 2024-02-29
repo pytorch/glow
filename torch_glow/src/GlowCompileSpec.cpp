@@ -16,7 +16,7 @@
 
 #include "GlowCompileSpec.h"
 #include "PyTorchCommon.h"
-#include "folly/json.h"
+#include "folly/json/json.h"
 #include <ATen/core/ivalue.h>
 #include <torch/custom_class.h>
 

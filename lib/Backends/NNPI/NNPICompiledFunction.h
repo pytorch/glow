@@ -24,7 +24,7 @@
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "nnpi_inference_types.h"
 #include "nnpi_transformer.h"
-#include <folly/dynamic.h>
+#include <folly/json/dynamic.h>
 #include <map>
 #include <memory>
 #include <mutex>

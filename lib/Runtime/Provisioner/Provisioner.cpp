@@ -26,7 +26,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 
-#include <folly/dynamic.h>
+#include <folly/json/dynamic.h>
 #include <future>
 #include <map>
 #include <mutex>

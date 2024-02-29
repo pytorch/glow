@@ -19,7 +19,7 @@
 #include "glow/Graph/FXIRWrapper.h"
 #include "llvm/Support/Casting.h"
 
-#include <folly/DynamicConverter.h>
+#include <folly/json/DynamicConverter.h>
 
 using namespace glow;
 
