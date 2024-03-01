@@ -20,7 +20,7 @@
 #include "glow/Graph/Graph.h"
 #include "llvm/ADT/MapVector.h"
 
-#include <folly/dynamic.h>
+#include <folly/json/dynamic.h>
 
 namespace glow {
 

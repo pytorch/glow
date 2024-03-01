@@ -19,7 +19,7 @@
 #include "NNPIAdapterContainer.h"
 #include "NNPIOptions.h"
 #include "glow/Backend/Backend.h"
-#include <folly/dynamic.h>
+#include <folly/json/dynamic.h>
 #include <vector>
 
 namespace glow {

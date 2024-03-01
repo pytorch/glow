@@ -20,8 +20,8 @@
 #include "PyTorchCommon.h"
 #include <ATen/core/ivalue.h>
 
-#include "folly/dynamic.h"
-#include "folly/json.h"
+#include "folly/json/dynamic.h"
+#include "folly/json/json.h"
 
 namespace glow {
 
