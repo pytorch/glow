@@ -132,9 +132,9 @@ for w in range(0, model_props[MODEL].image_size):
     for h in range(0, model_props[MODEL].image_size):
         for c in range(0, model_props[MODEL].num_color_channels):
             # WHC -> CWH, RGB -> BGR
-            transposed_image[0][model_props[MODEL].num_color_channels - c - 1][w][
-                h
-            ] = model_props[MODEL].image_mode_op(img[w][h][c])
+            transposed_image[0][model_props[MODEL].num_color_channels - c - 1][w][h] = (
+                model_props[MODEL].image_mode_op(img[w][h][c])
+            )
 
 final_image = transposed_image
 

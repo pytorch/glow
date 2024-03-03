@@ -85,7 +85,7 @@ class TestToGlowWriteToOnnx(utils.TorchGlowTestCase):
         self.assertEqual(type(g), type(t))
         self.assertEqual(len(g), len(t))
 
-        for (gi, ti) in zip(g, t):
+        for gi, ti in zip(g, t):
             self.assertTrue(torch.allclose(gi, ti))
 
         assert os.path.exists(onnx_prefix + ".onnxtxt")

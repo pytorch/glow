@@ -63,9 +63,11 @@ class TestQuantizedEmbeddingBag(utils.TorchGlowTestCase):
                     bits="_4bit" if is4bit else "_byte",
                     weighted="_weighted" if is_weighted else "",
                     fp16="_fp16" if use_fp16 else "",
-                    sample_weights="_sample_weights_fp16"
-                    if per_sample_weights_fp16 and is_weighted
-                    else "",
+                    sample_weights=(
+                        "_sample_weights_fp16"
+                        if per_sample_weights_fp16 and is_weighted
+                        else ""
+                    ),
                     backend="_" + DEFAULT_BACKEND,
                 ),
                 num_lengths,
@@ -157,9 +159,11 @@ class TestQuantizedEmbeddingBag(utils.TorchGlowTestCase):
             indices,
             offsets,
             fusible_ops={
-                "quantized::embedding_bag_4bit_rowwise_offsets"
-                if is4bit
-                else "quantized::embedding_bag_byte_rowwise_offsets"
+                (
+                    "quantized::embedding_bag_4bit_rowwise_offsets"
+                    if is4bit
+                    else "quantized::embedding_bag_byte_rowwise_offsets"
+                )
             },
             fp16=use_fp16,
             # FP16 version is known to yeild different results, so our

@@ -55,7 +55,7 @@ class TestToGlowTupleOutput(utils.TorchGlowTestCase):
         self.assertEqual(type(g), type(t))
         self.assertEqual(len(g), len(t))
 
-        for (gi, ti) in zip(g, t):
+        for gi, ti in zip(g, t):
             self.assertTrue(torch.allclose(gi, ti))
 
         # test module ser/de with tuple output

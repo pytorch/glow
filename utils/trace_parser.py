@@ -166,13 +166,13 @@ def dumpAccumulate(events, keyfunc, traceTime):
         nameMap[name].append(ev.selfTime())
 
     layers = []
-    for (name, times) in nameMap.items():
+    for name, times in nameMap.items():
         layers.append(
             (name, len(times), numpy.mean(times), numpy.std(times), numpy.sum(times))
         )
 
     # Iterate sorted by total time.
-    for (name, num, mean, stddev, total) in sorted(
+    for name, num, mean, stddev, total in sorted(
         layers, key=itemgetter(4), reverse=True
     ):
         mean = formatUs(mean)
