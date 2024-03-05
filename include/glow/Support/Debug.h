@@ -18,15 +18,15 @@
 
 namespace glow {
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !defined(DISABLE_DEBUG_GLOW)
 
 /// \returns true if \p type matches the activated debug type.
-bool isCurrentDebugType(const char *type);
+bool isGlowCurrentDebugType(const char *type);
 
 /// Macro to perform debug actions when TYPE is activated.
 #define DEBUG_GLOW_WITH_TYPE(TYPE, X)                                          \
   do {                                                                         \
-    if (glow::DebugFlag || glow::isCurrentDebugType(TYPE)) {                   \
+    if (glow::DebugFlag || glow::isGlowCurrentDebugType(TYPE)) {               \
       X;                                                                       \
     }                                                                          \
   } while (false)
