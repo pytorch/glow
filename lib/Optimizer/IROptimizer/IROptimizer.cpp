@@ -160,12 +160,10 @@ public:
 };
 } // namespace
 
-#ifndef NDEBUG
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Interval &I) {
   os << I.str();
   return os;
 }
-#endif
 
 /// Set of intervals for a single memory buffer. If there is only one write into
 /// a memory buffer, it would contain a single interval. If there are multiple
