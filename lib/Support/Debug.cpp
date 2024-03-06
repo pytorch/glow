@@ -41,7 +41,7 @@ namespace glow {
 /// Exported boolean set by -debug-glow option.
 bool DebugFlag = false;
 
-#if !defined(NDEBUG) && !defined(DISABLE_DEBUG_GLOW)
+#if !defined(DISABLE_DEBUG_GLOW)
 bool isGlowCurrentDebugType(const char *type) {
   return std::find(DebugGlowOnly.begin(), DebugGlowOnly.end(), type) !=
          DebugGlowOnly.end();

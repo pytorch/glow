@@ -18,7 +18,7 @@
 
 namespace glow {
 
-#if !defined(NDEBUG) && !defined(DISABLE_DEBUG_GLOW)
+#if !defined(DISABLE_DEBUG_GLOW)
 
 /// \returns true if \p type matches the activated debug type.
 bool isGlowCurrentDebugType(const char *type);
