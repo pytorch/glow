@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import collections
 import collections.abc
 import copy
