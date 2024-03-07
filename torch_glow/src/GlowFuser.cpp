@@ -31,6 +31,8 @@
 #include <torch/csrc/jit/runtime/custom_operator.h>
 #include <torch/csrc/jit/tensorexpr/kernel.h>
 
+#include <string_view>
+
 namespace glow {
 namespace {
 
@@ -358,7 +360,7 @@ void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
 
 void processTensorExprGroups(std::shared_ptr<torch::jit::Graph> &graph) {
   for (auto it = graph->nodes().begin(); it != graph->nodes().end(); it++) {
-    if (it->kind().toQualString() != "tensorexpr::Group") {
+    if (it->kind().toQualString() != std::string_view("tensorexpr::Group")) {
       continue;
     }
 
