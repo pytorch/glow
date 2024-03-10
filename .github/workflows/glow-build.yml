@@ -31,12 +31,15 @@ jobs:
         fi
 
         original_pwd=$(pwd)
-        sudo apt-get update;
+        # sudo yum update
         mkdir ~/tempdownload;
         cd ~/tempdownload;
         wget https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-8.1p1.tar.gz;
         tar zxvf openssh-8.1p1.tar.gz;
-        cd openssh-8.1p1 && ./configure && make && sudo make install;
+        cd openssh-8.1p1 &&
+        ./configure &&
+        make > /dev/null &&
+        sudo make install;
 
         cd $original_pwd
         git submodule sync
