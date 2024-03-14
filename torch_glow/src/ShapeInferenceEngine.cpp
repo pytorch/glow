@@ -3437,7 +3437,8 @@ ShapeInferenceEngine::argmin(const MetaStack &variableMetas) {
  *    int salt,
  *    int maxValue,
  *    Tensor multiplier_shift,
- *    bool hashIntoInt32
+ *    bool hashIntoInt32,
+ *    bool? noHashNegSalt
  * ) -> Tensor
  *
  *
@@ -3445,8 +3446,8 @@ ShapeInferenceEngine::argmin(const MetaStack &variableMetas) {
 Expected<TensorOutput>
 ShapeInferenceEngine::sigridHashPrecompute(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 5,
-      strFormat("Expected 5 inputs, got %zu", variableMetas.size()));
+      variableMetas.size() == 6,
+      strFormat("Expected 6 inputs, got %zu", variableMetas.size()));
 
   TensorShape shape = variableMetas[0].shape<TensorShape>();
 
