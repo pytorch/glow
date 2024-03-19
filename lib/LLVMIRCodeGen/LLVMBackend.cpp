@@ -688,8 +688,6 @@ std::unique_ptr<CompiledFunction>
 LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   AllocationsInfo allocationsInfo;
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR, allocationsInfo);
-  llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
-                                                   llvmTargetFeatures.end());
   irgen->initTargetMachine(getOptions());
   irgen->initCodeGen();
   irgen->setIRFunction(IR);
@@ -736,8 +734,6 @@ LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
 void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
                        llvm::StringRef bundleName,
                        llvm::StringRef mainEntryName) const {
-  llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
-                                                   llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   auto bundleSaver = createBundleSaver(*this, outputDir, bundleName);
   bundleSaver->save(mainEntryName, IR.get());

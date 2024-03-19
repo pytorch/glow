@@ -173,8 +173,6 @@ BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
                          llvm::StringRef outputDir, llvm::StringRef bundleName)
     : irgen_(llvmBackend.createIRGen(nullptr, allocationsInfo_)),
       bundleAPI_(llvmBackend.getOptions().getBundleAPI()) {
-  llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
-                                                   llvmTargetFeatures.end());
   irgen_->setBundleName(bundleName.str());
   irgen_->setOutputDir(outputDir);
   irgen_->setObjectRegistry(llvmBackend.getObjectRegistry());
