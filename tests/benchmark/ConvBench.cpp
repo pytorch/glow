@@ -99,8 +99,8 @@ public:
   virtual void run() override {
     // biasWDims isn't used in libjit_conv2d_f, so we're passing NULL.
     libjit_conv2d_f(outW.data(), inW.data(), filterW.data(), biasW.data(),
-                    outWdims, inWdims, filterWdims, NULL, kernelSizes, strides,
-                    pads, group, depthUnroll);
+                    outWdims, inWdims, filterWdims, nullptr, kernelSizes,
+                    strides, pads, group, depthUnroll);
   }
 
   virtual void teardown() override {}

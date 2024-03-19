@@ -155,14 +155,14 @@ protected:
   void SetUp() override {
     // Get an OpenCL platform ID.
     std::vector<cl_platform_id> platforms(1);
-    cl_int err = clGetPlatformIDs(1, platforms.data(), NULL);
+    cl_int err = clGetPlatformIDs(1, platforms.data(), nullptr);
     ASSERT_EQ(err, CL_SUCCESS) << "clGetPlatformIDs failed.";
 
     // Get an OpenCL device ID.
     cl_platform_id platform_id_used = platforms[0];
     std::vector<cl_device_id> devices(1);
     err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 1,
-                         devices.data(), NULL);
+                         devices.data(), nullptr);
     ASSERT_EQ(err, CL_SUCCESS) << "clGetDeviceIDs failed";
 
     // Create an OpenCL context.
