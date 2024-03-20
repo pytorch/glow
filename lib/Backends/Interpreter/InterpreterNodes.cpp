@@ -2823,7 +2823,7 @@ void BoundInterpreterFunction::fwdGatherRangesInstImpl(
 
   // Keep track of the total number of elements gathered across all
   // examples for a sanity check later.
-  dim_t grandTotalLen = 0;
+  [[maybe_unused]] dim_t grandTotalLen = 0;
 
   // For each example in ranges:
   for (dim_t example = 0; example < numExamples; ++example) {
@@ -5284,7 +5284,7 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
-  size_t totalLength = 0;
+  [[maybe_unused]] size_t totalLength = 0;
   for (size_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
@@ -5334,7 +5334,7 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstFloatImpl(
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
-  size_t totalLength = 0;
+  [[maybe_unused]] size_t totalLength = 0;
   for (size_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
@@ -5386,7 +5386,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
-  size_t totalLength = 0;
+  [[maybe_unused]] size_t totalLength = 0;
   for (dim_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
@@ -5427,7 +5427,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
   auto LH = lengths->getHandle<int32_t>();
 
   dim_t segments = lengths->dims()[0];
-  dim_t totalLength = 0;
+  [[maybe_unused]] dim_t totalLength = 0;
   for (dim_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
@@ -5503,7 +5503,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   auto IH = indices->getHandle<int64_t>();
 
   size_t segments = lengths->dims()[0];
-  size_t totalLength = 0;
+  [[maybe_unused]] size_t totalLength = 0;
   for (size_t i = 0; i < segments; ++i) {
     totalLength += LH.raw(i);
   }
@@ -5682,7 +5682,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
   auto LH = lengths->getHandle<int32_t>();
 
   dim_t segments = lengths->dims()[0];
-  dim_t totalLength = 0;
+  [[maybe_unused]] dim_t totalLength = 0;
   for (dim_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
@@ -5777,7 +5777,7 @@ void BoundInterpreterFunction::
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
-  size_t totalLength = 0;
+  [[maybe_unused]] size_t totalLength = 0;
   for (size_t i = 0; i < segments; i++) {
     totalLength += LH.raw(i);
   }
