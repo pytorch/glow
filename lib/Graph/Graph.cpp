@@ -5710,7 +5710,7 @@ void Function::createMelWeights(llvm::StringRef prefix, dim_t spectrogramLength,
   }
 
   // Validate Mel ranges.
-  dim_t melBinFreqWeightsNumValidate = 0;
+  [[maybe_unused]] dim_t melBinFreqWeightsNumValidate = 0;
   for (dim_t melIdx = 0; melIdx < numMelBins; melIdx++) {
     int32_t freqIdxRange =
         melRangesH.raw(2 * melIdx + 1) - melRangesH.raw(2 * melIdx + 0) + 1;
