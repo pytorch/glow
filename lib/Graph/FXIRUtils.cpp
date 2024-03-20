@@ -53,6 +53,7 @@ const std::unordered_map<std::string, ElemKind> stringToElemKind = {
     {"acc.uint4fused", ElemKind::UInt4FusedQTy},
     // bool type
     {"torch.bool", ElemKind::BoolTy},
+    {"torch.bfloat16", ElemKind::BFloat16Ty},
 };
 }
 
