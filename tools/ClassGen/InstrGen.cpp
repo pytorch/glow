@@ -1182,6 +1182,7 @@ int main(int argc, char **argv) {
       .addOperand("Values", OperandKind::In)
       .addMember(MemberType::Boolean, "Accumulate")
       .addMember(MemberType::Int64, "NumIndices")
+      .addMember(MemberType::Int64, "StartDim")
       .inplaceOperand({"Dest", "Input"})
       .autoVerify(VerifyKind::NoVerify);
   //===--------------------------------------------------------------------===//
