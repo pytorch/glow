@@ -67,7 +67,7 @@ void TensorViewInst::verify() const {
 }
 
 void AllocActivationInst::verify() const {
-  unsigned numDealloc = 0;
+  [[maybe_unused]] unsigned numDealloc = 0;
   for (const Use &U : getUsers()) {
     numDealloc += isa<DeallocActivationInst>(U.get());
   }
