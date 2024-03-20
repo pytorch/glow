@@ -417,7 +417,7 @@ static unsigned getPreferredVectorWidth(cl_device_id device,
     LOG(FATAL) << "Unsupported vector data type: "
                << Type::getElementName(elementType).str();
   }
-  clGetDeviceInfo(device, paramName, sizeof(width), &width, NULL);
+  clGetDeviceInfo(device, paramName, sizeof(width), &width, nullptr);
   return width;
 }
 

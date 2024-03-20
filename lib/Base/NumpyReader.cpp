@@ -144,7 +144,7 @@ void numpyReader(const std::string &filename, NpyData &npyData) {
 
   npyData.type = npyType[typestr];
 
-  npyData.elemSize = strtol(&typestr[1], NULL, 10);
+  npyData.elemSize = strtol(&typestr[1], nullptr, 10);
   CHECK(npyData.elemSize > 0 && npyData.elemSize <= 8)
       << "NPY loader: Element size wrong: " << npyData.elemSize;
 
@@ -165,7 +165,7 @@ void numpyReader(const std::string &filename, NpyData &npyData) {
   std::string token;
   npyData.nvals = 1;
   while (std::getline(ss, token, ',')) {
-    size_t val = strtol(&token[0], NULL, 10);
+    size_t val = strtol(&token[0], nullptr, 10);
     CHECK(val > 0) << "NPY loader: Element size wrong: " << val;
     npyData.shape.push_back(val);
     npyData.nvals *= val;
