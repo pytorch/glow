@@ -143,8 +143,8 @@ Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
         size_t readSize = ss->read(static_cast<char *>(ptr), size * count);
         return readSize;
       };
-      inputStream.writeCallback = NULL;
-      inputStream.seekCallback = NULL;
+      inputStream.writeCallback = nullptr;
+      inputStream.seekCallback = nullptr;
       DBG_MEM_USAGE("call nnpiHostNetworkCreateFromStream");
       LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
           nnpiHostNetworkCreateFromStream(pAdapter_->getHandle(), &inputStream,

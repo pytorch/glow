@@ -949,7 +949,7 @@ public:
     return nnpiNetworkAddPoolingOp(
         importer.getNetwork(), glowPool->getName().begin(),
         nodeValueName(glowPool->getInput()).c_str(),
-        nodeValueName(glowPool->getResult()).c_str(), NULL, kernel.data(),
+        nodeValueName(glowPool->getResult()).c_str(), nullptr, kernel.data(),
         paddingStart.data(), paddingEnd.data(), stride.data(), numDims,
         poolType, !countIncludePads, 0);
   }
@@ -1735,7 +1735,7 @@ public:
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLS->getName().begin(),
         nodeValueName(glowSLS->getData()).c_str(),
-        nodeValueName(glowSLS->getResult()).c_str(), NULL,
+        nodeValueName(glowSLS->getResult()).c_str(), nullptr,
         nodeValueName(glowSLS->getIndices()).c_str(),
         nodeValueName(glowSLS->getLengths()).c_str(), 0, 0,
         glowSLS->getAvgLength(), lengthType);
@@ -2294,7 +2294,7 @@ public:
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
-        nodeValueName(glowSLWS->getResult()).c_str(), NULL,
+        nodeValueName(glowSLWS->getResult()).c_str(), nullptr,
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, 0,
         glowSLWS->getAvgLength(), lengthType);
