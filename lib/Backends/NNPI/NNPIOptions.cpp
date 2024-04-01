@@ -83,7 +83,7 @@ template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal) {
 
 template <> uint64_t NNPIOptions::getStringAsType<uint64_t>(std::string sVal) {
   if (isUInt(sVal)) {
-    return (uint64_t)std::strtoull(sVal.c_str(), NULL, 0);
+    return (uint64_t)std::strtoull(sVal.c_str(), nullptr, 0);
   }
   return 0;
 }

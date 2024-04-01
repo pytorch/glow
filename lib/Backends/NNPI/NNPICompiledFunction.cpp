@@ -429,8 +429,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     {
       NNPIStream outFileStream;
       outFileStream.userData = &compiledStream_;
-      outFileStream.readCallback = NULL;
-      outFileStream.seekCallback = NULL;
+      outFileStream.readCallback = nullptr;
+      outFileStream.seekCallback = nullptr;
       outFileStream.writeCallback = [](const void *ptr, uint64_t size,
                                        uint64_t count,
                                        void *userData) -> uint64_t {
@@ -452,7 +452,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
         LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
             nnpiNetworkCompileToStream(network_, &config_, &outFileStream,
-                                       NULL),
+                                       nullptr),
             "Failed NNPI Compile");
       }
       DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
@@ -460,7 +460,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     {
       LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
           nnpiNetworkCompileToFile(network_, &config_,
-                                   compilationFileName_.c_str(), NULL),
+                                   compilationFileName_.c_str(), nullptr),
           "Failed NNPI Compile");
     }
 

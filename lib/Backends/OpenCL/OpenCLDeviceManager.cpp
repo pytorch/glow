@@ -245,7 +245,7 @@ Error OpenCLDeviceManager::init() {
   RETURN_IF_ERR(parseConfig());
 
   cl_uint numPlatforms{0};
-  cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
+  cl_int err = clGetPlatformIDs(0, nullptr, &numPlatforms);
   if (err != CL_SUCCESS) {
     return MAKE_ERR("clGetPlatformIDs Failed.");
   }
@@ -255,7 +255,7 @@ Error OpenCLDeviceManager::init() {
   }
 
   std::vector<cl_platform_id> platform_ids(numPlatforms);
-  err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
+  err = clGetPlatformIDs(numPlatforms, platform_ids.data(), nullptr);
 
   cl_platform_id platform_id_used = platform_ids[clPlatformId];
 
@@ -270,7 +270,7 @@ Error OpenCLDeviceManager::init() {
 
   cl_ulong mem_size;
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong),
-                        &mem_size, NULL);
+                        &mem_size, nullptr);
   if (err != CL_SUCCESS) {
     return MAKE_ERR("Error getting device memory limit");
   }
@@ -285,14 +285,14 @@ Error OpenCLDeviceManager::init() {
   localMemSize_ = 0;
   cl_device_local_mem_type localMemType;
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_TYPE,
-                        sizeof(localMemType), &localMemType, NULL);
+                        sizeof(localMemType), &localMemType, nullptr);
   if (err != CL_SUCCESS) {
     return MAKE_ERR("Error getting device local memory type.");
   }
   if (localMemType == CL_LOCAL) {
     cl_ulong localMemSize;
     err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_SIZE,
-                          sizeof(localMemSize), &localMemSize, NULL);
+                          sizeof(localMemSize), &localMemSize, nullptr);
     if (err != CL_SUCCESS) {
       return MAKE_ERR("Error getting device local memory type.");
     }
@@ -668,7 +668,7 @@ void OpenCLDeviceManager::translateTraceEvents(
     auto &event = devBindings->kernelLaunches.back().event_;
     cl_ulong time_end;
     clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
-                            &time_end, NULL);
+                            &time_end, nullptr);
 
     // Get the difference between the last event's end and the tsOffset
     // timestamp.
@@ -694,12 +694,12 @@ void OpenCLDeviceManager::translateTraceEvents(
 
     if (clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
                                 sizeof(timeStart), &timeStart,
-                                NULL) != CL_SUCCESS) {
+                                nullptr) != CL_SUCCESS) {
       continue;
     }
     if (clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END,
                                 sizeof(timeEnd), &timeEnd,
-                                NULL) != CL_SUCCESS) {
+                                nullptr) != CL_SUCCESS) {
       continue;
     }
 

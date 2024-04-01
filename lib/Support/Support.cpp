@@ -161,7 +161,7 @@ const std::string strFormat(const char *format, ...) {
   // Compute the length of the output to be produced.
   // The vsnprintf call does not actually write anything, but properly computes
   // the amount of characters that would be written.
-  const int len = vsnprintf(NULL, 0, format, vaArgsCopy);
+  const int len = vsnprintf(nullptr, 0, format, vaArgsCopy);
   va_end(vaArgsCopy);
 
   // Create a formatted string without any risk of memory issues.
@@ -185,7 +185,7 @@ const std::string &staticStrFormat(const char *format, ...) {
   // Compute the length of the output to be produced.
   // The vsnprintf call does not actually write anything, but properly computes
   // the amount of characters that would be written.
-  const int len = vsnprintf(NULL, 0, format, vaArgsCopy);
+  const int len = vsnprintf(nullptr, 0, format, vaArgsCopy);
   va_end(vaArgsCopy);
 
   // Create a formatted string without any risk of memory issues.
