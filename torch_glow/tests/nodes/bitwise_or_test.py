@@ -36,7 +36,7 @@ class TestBitwiseOr(utils.TorchGlowTestCase):
         [
             lambda: (
                 "basic",
-                torch.tensor([0x01, 0x03, 0xFFFFFFF0, 0x5], dtype=torch.int32),
+                torch.tensor([0x01, 0x03, 0x7FFFFFF0, 0x5], dtype=torch.int32),
                 torch.tensor([0x02, 0x03, 0x2, 0x1F], dtype=torch.int32),
             ),
             lambda: (
