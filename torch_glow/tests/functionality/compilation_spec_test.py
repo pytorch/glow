@@ -7,7 +7,7 @@ import pickle
 
 import torch
 import torch_glow
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class TestCompilationSpec(utils.TorchGlowTestCase):

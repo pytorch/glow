@@ -17,8 +17,8 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import torch
+from glow.glow.torch_glow.tests.tests import utils
 from parameterized import parameterized
-from tests import utils
 
 
 class SimpleFmodModule(torch.nn.Module):

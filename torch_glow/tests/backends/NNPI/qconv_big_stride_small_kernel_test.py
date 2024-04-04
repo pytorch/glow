@@ -4,7 +4,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class TestQuantizedConv2dBigStrideSmallKernel(utils.TorchGlowTestCase):

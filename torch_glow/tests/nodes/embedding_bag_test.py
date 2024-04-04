@@ -18,8 +18,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import numpy as np
 import torch
-from tests import utils
-from tests.utils import check_skip, DEFAULT_BACKEND
+from glow.glow.torch_glow.tests.tests import utils
+from glow.glow.torch_glow.tests.tests.utils import check_skip, DEFAULT_BACKEND
 
 
 class TestEmbeddingBag(utils.TorchGlowTestCase):

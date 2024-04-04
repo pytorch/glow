@@ -20,7 +20,7 @@ import unittest
 
 import torch
 import torch.nn.functional as F
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class SimpleLogSoftmaxModel(torch.nn.Module):

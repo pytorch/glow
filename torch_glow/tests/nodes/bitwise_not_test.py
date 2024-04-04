@@ -19,8 +19,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
+from glow.glow.torch_glow.tests.tests import utils
 from parameterized import parameterized
-from tests import utils
 
 
 class SimpleBitwiseNotModule(torch.nn.Module):

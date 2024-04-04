@@ -5,8 +5,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import torch
 import torch_glow
-from tests import utils
-from tests.utils import graph_contains_str
+from glow.glow.torch_glow.tests.tests import utils
+from glow.glow.torch_glow.tests.tests.utils import graph_contains_str
 
 
 graph_str = """

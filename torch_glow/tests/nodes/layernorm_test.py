@@ -18,7 +18,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import torch
 import torch.nn.functional as F
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class SimpleLayerNormModule(torch.nn.Module):

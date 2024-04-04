@@ -6,7 +6,7 @@ import unittest
 import torch
 import torch.jit
 import torch_glow
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class Bar(torch.nn.Module):

@@ -18,7 +18,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import numpy as np
 import torch
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class SimpleCosModule(torch.nn.Module):
