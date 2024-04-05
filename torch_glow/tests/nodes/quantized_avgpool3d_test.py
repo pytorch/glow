@@ -17,7 +17,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import torch
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class SimpleQuantizedAvgPool3DModule(torch.nn.Module):

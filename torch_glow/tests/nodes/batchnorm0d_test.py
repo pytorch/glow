@@ -18,7 +18,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import torch
 import torch.nn as nn
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class TestBatchNorm0D(utils.TorchGlowTestCase):

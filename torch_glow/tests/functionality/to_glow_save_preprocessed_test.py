@@ -6,7 +6,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 import torch.jit
 import torch_glow
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 # Use a model containing quantized::conv2d to verify preprocessed module is

@@ -20,7 +20,7 @@ import logging
 import unittest
 
 import torch
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 logger = logging.getLogger("quantized conv3d test")

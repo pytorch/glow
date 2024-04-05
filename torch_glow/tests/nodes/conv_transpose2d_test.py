@@ -20,7 +20,7 @@ from collections import namedtuple
 
 import torch
 import torch.nn.functional as F
-from tests import utils
+from glow.glow.torch_glow.tests.tests import utils
 
 
 class SimpleConvTranspose2dModule(torch.nn.Module):
