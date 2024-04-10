@@ -4490,10 +4490,12 @@ void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
   {idx0, idx1 * hiddenSize, 0}, {                                              \
     idx0 + 1, (idx1 + 1) * hiddenSize, hiddenSize                              \
   }
+  // clang-format off
 #define RNN_B_SLICE_RANGE(idx0, idx1)                                          \
   {idx0, idx1 * hiddenSize}, { idx0 + 1, (idx1 + 1) * hiddenSize }
 #define RNN_H_SLICE_RANGE(idx)                                                 \
   {idx + 0, 0, 0}, { idx + 1, batchSize, hiddenSize }
+// clang-format on
 #define RNN_CREATE_FC(name, LHS, RHS, BIAS)                                    \
   BIAS ? (Node *)createFullyConnected(name, LHS, RHS, BIAS)                    \
        : (Node *)createMatMul(name, LHS, RHS)
@@ -4698,10 +4700,12 @@ void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
   {idx0, idx1 * hiddenSize, 0}, {                                              \
     idx0 + 1, (idx1 + 1) * hiddenSize, hiddenSize                              \
   }
+  // clang-format off
 #define GRU_B_SLICE_RANGE(idx0, idx1)                                          \
   {idx0, idx1 * hiddenSize}, { idx0 + 1, (idx1 + 1) * hiddenSize }
 #define GRU_H_SLICE_RANGE(idx)                                                 \
   {idx + 0, 0, 0}, { idx + 1, batchSize, hiddenSize }
+// clang-format on
 #define GRU_CREATE_FC(name, LHS, RHS, BIAS)                                    \
   BIAS ? (Node *)createFullyConnected(name, LHS, RHS, BIAS)                    \
        : (Node *)createMatMul(name, LHS, RHS)
@@ -4981,8 +4985,10 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
   }
 #define LSTM_B_SLICE_RANGE(idx0, idx1)                                         \
   {idx0, idx1 * hiddenSize}, { idx0 + 1, (idx1 + 1) * hiddenSize }
+  // clang-format off
 #define LSTM_P_SLICE_RANGE(idx0, idx1)                                         \
   {idx0, idx1 * hiddenSize}, { idx0 + 1, (idx1 + 1) * hiddenSize }
+// clang-format on
 #define LSTM_CREATE_FC(name, LHS, RHS, BIAS)                                   \
   BIAS ? (Node *)createFullyConnected(name, LHS, RHS, BIAS)                    \
        : (Node *)createMatMul(name, LHS, RHS)
