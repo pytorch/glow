@@ -56,9 +56,8 @@ public:
   ConvBench(size_t inputBatch, size_t inputEdgeSize, size_t inputChannels,
             size_t filterMultiplier, size_t kernelSize, size_t stride,
             size_t pad, size_t group)
-      : kernelSizes{kernelSize, kernelSize}, strides{stride, stride}, pads{pad,
-                                                                           pad},
-        group(group) {
+      : kernelSizes{kernelSize, kernelSize}, strides{stride, stride},
+        pads{pad, pad}, group(group) {
 
     inWdims[0] = inputBatch;
     inWdims[1] = inputEdgeSize;
@@ -148,10 +147,10 @@ int main() {
                        inputBatch, inputEdgeSize, inputChannels,
                        filterMultiplier, kernelSize, stride, pad, group, time);
               } // group
-            }   // stride
-          }     // kernelSize
-        }       // filterMultiplier
-      }         // inputChannels
-    }           // inputEdgeSize
-  }             // inputBatch
+            } // stride
+          } // kernelSize
+        } // filterMultiplier
+      } // inputChannels
+    } // inputEdgeSize
+  } // inputBatch
 }

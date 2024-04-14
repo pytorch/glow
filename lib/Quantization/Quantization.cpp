@@ -380,7 +380,7 @@ protected:
     switch (node.getKind()) {
       // Those cases need to be in sync with postProcessing, so we generate them
       // using macros.
-    CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE : {
+    CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE: {
       // The constraints on the IR says that the input type must
       // be the same as the output type.
       TypeRef inTy =
@@ -436,7 +436,7 @@ protected:
       CASE_ALL_INS_MATCH_SINGLE_OUT(InsertTensor);
 #undef CASE_ALL_INS_MATCH_SINGLE_OUT
 
-    CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE : {
+    CASES_FOR_SINGLE_MATCHING_IN_OUT_TYPE: {
       // Check that the main loop hands us the node in the order we expect:
       // morph then postprocessing.
       // If the assert breaks, that means that morphNode and postprocessing
@@ -477,7 +477,7 @@ protected:
       break;
     }
 
-    CASES_FOR_INT_LOOKUP_TABLE_REPLACEMENT : {
+    CASES_FOR_INT_LOOKUP_TABLE_REPLACEMENT: {
       // If these nodes aren't supported then we convert them to a lookup table.
       NodeInfo NI(node);
       if (B_.isOpSupported(NI)) {

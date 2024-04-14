@@ -238,10 +238,8 @@ void PartitionerBase::dumpDAG(llvm::StringRef dotFilename,
         // edge will create loop. So in this case, this edge just be ignored.
         continue;
       }
-      myfile << "\"" << escapeDottyString(node->name) << "\""
-             << " -> "
-             << "\"" << escapeDottyString(child->name) << "\""
-             << ";";
+      myfile << "\"" << escapeDottyString(node->name) << "\"" << " -> " << "\""
+             << escapeDottyString(child->name) << "\"" << ";";
     }
   }
   myfile << "}";

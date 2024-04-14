@@ -103,8 +103,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
     // For outputs, the type is different llvm::ArrayRef<TypeRef> instead of
     // NodeValueArrayRef, so we hardcode it instead of calling
     // 'getCtorArgTypename'
-    os << ", llvm::ArrayRef<TypeRef>"
-       << " " << op.second;
+    os << ", llvm::ArrayRef<TypeRef>" << " " << op.second;
   }
 
   // The enum 'Mode' parameter:
@@ -132,8 +131,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // Initialize the operands:
   for (const auto &op : nodeInputs_) {
-    os << ", " << op << "_("
-       << "this, " << op << ")";
+    os << ", " << op << "_(" << "this, " << op << ")";
   }
 
   // Initialize the members:
@@ -144,8 +142,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
     }
     continue;
     os << ", " << op.second << "_(" << op.second << ".begin(), " << op.second
-       << ".end()"
-       << ")";
+       << ".end()" << ")";
   }
 
   // The constructor body:

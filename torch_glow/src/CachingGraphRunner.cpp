@@ -680,8 +680,8 @@ template <typename Ty>
 TensorCompareResult compareTensors(glow::Tensor &RefT, glow::Tensor &CmpT) {
   TensorCompareResult result = {INFINITY, INFINITY, INFINITY};
   if (CmpT.getHandle<Ty>().size() != RefT.getHandle<Ty>().size()) {
-    LOG(ERROR) << "Dimension mismatch: "
-               << "\tReference dims: " << RefT.getHandle().getType().dims()
+    LOG(ERROR) << "Dimension mismatch: " << "\tReference dims: "
+               << RefT.getHandle().getType().dims()
                << "\tGlow dims: " << CmpT.getHandle().getType().dims()
                << std::endl;
     return result;

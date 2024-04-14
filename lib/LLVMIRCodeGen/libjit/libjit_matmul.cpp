@@ -18,9 +18,9 @@
 namespace {
 
 /// Macros for accessing submatrices of a matmul using the leading dimension.
-#define A(i, j) a[(j)*lda + (i)]
-#define B(i, j) b[(j)*ldb + (i)]
-#define C(i, j) c[(j)*ldc + (i)]
+#define A(i, j) a[(j) * lda + (i)]
+#define B(i, j) b[(j) * ldb + (i)]
+#define C(i, j) c[(j) * ldc + (i)]
 
 /// Naive gemm helper to handle oddly-sized matrices.
 void libjit_matmul_odd(int m, int n, int k, const float *a, int lda,

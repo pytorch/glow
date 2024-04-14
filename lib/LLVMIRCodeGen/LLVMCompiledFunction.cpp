@@ -117,8 +117,8 @@ Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     }
   }
   using JitFuncType =
-      void (*)(uint8_t * constantWeightVars, uint8_t * mutableWeightVars,
-               uint8_t * activations);
+      void (*)(uint8_t *constantWeightVars, uint8_t *mutableWeightVars,
+               uint8_t *activations);
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
     TRACE_EVENT_SCOPE_END_NAMED(fjEvent);

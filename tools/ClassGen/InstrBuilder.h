@@ -350,9 +350,8 @@ public:
   }
 
   ~Builder() {
-    defStream << "DEF_INSTR_RANGE(Instruction, " << firstInstr << "Inst"
-              << ", " << lastInstr << "Inst"
-              << ")\n";
+    defStream << "DEF_INSTR_RANGE(Instruction, " << firstInstr << "Inst" << ", "
+              << lastInstr << "Inst" << ")\n";
 
     defStream << "#undef DEF_INSTR_RANGE\n"
                  "#undef DEF_INSTR\n"

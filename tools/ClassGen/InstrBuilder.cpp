@@ -559,8 +559,8 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
     // Create activation for the output operand with name valueName using the
     // type of the corresponding node result nodeResultName.
     os << "  auto *" << valueName
-       << "__ = builder_.createAllocActivationInst(allocName,"
-       << "CN__->get" << nodeResultName << "().getType());\n";
+       << "__ = builder_.createAllocActivationInst(allocName," << "CN__->get"
+       << nodeResultName << "().getType());\n";
   }
   os << "  auto *V = builder_.create" << name_ << "Inst(N->getName()";
 

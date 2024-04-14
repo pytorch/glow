@@ -5333,7 +5333,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
     } // Handle RescaleQuantizedNode
-  }   // For each item in the worklist.
+  } // For each item in the worklist.
 
   // This pass is based on real qparams, so skip this opt if using dummies.
   if (!cctx.precisionConfig.loadUniquedDummyQParams) {
@@ -7589,8 +7589,7 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       default:
         VLOG(1) << "Attempted to parallelize op type " << curNode->getKindName()
-                << "not yet supported"
-                << "\n";
+                << "not yet supported" << "\n";
         break;
       }
       break;
@@ -7775,8 +7774,7 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       default:
         VLOG(1) << "Attempted to parallelize op type " << curNode->getKindName()
-                << "not yet supported"
-                << "\n";
+                << "not yet supported" << "\n";
         break;
       }
       break;

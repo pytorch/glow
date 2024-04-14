@@ -48,8 +48,8 @@ static void loadTensorFromTextFileImpl(Tensor &tensor, llvm::StringRef filename,
     // Load tensor value.
     CHECK(fs >> val) << "Error loading text file '" << filename.data()
                      << "'! Only " << idx
-                     << " values were given for loading a tensor "
-                     << "with " << e << " elements!";
+                     << " values were given for loading a tensor " << "with "
+                     << e << " elements!";
     handle.raw(idx) = val;
     // Check delimiter.
     CHECK(fs >> ch) << "Error loading text file '" << filename.data()
@@ -170,8 +170,8 @@ void glow::loadTensorFromBinaryFile(Tensor &tensor, llvm::StringRef filename,
   CHECK(fileDataSize == tensorSize)
       << "Error loading binary file '" << filename.data()
       << "' with header size " << headerSize << " bytes and data size "
-      << fileDataSize << " bytes into "
-      << "tensor with size " << tensorSize << " bytes!";
+      << fileDataSize << " bytes into " << "tensor with size " << tensorSize
+      << " bytes!";
 
   // Load tensor data.
   fs.seekg(headerSize, std::ios::beg);

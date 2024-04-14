@@ -935,9 +935,9 @@ libjit_max_pool_argmax_generic(const T *inW, T *outW, T2 *argmax,
           outW[flatIndex] = max;
           argmax[flatIndex] = argmaxNHWC;
         } // C
-      }   // W
-    }     // H
-  }       // N
+      } // W
+    } // H
+  } // N
 }
 
 template <typename T>
@@ -1551,9 +1551,9 @@ void libjit_max_pool_argmax_grad_generic(T *inG, const T *outG,
           float df = outG[flatIndex];
           inG[argmax[flatIndex]] += df;
         } // W
-      }   // H
-    }     // C
-  }       // N
+      } // H
+    } // C
+  } // N
 }
 } // namespace
 
@@ -2536,9 +2536,9 @@ void libjit_local_response_normalization_f(
           outW[libjit_getXYZW(outWdims, n, h, w, c)] =
               inW[libjit_getXYZW(inWdims, n, h, w, c)] * normFactor;
         } // C
-      }   // W
-    }     // H
-  }       // N
+      } // W
+    } // H
+  } // N
 }
 
 void libjit_local_response_normalization_grad_f(
@@ -2585,8 +2585,8 @@ void libjit_local_response_normalization_grad_f(
               outg * pow(scale, -beta) - coeff * inw * sum;
         }
       } // W
-    }   // H
-  }     // N
+    } // H
+  } // N
 }
 
 void libjit_max_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
@@ -2928,9 +2928,9 @@ void libjit_adaptive_avg_pool_f(const float *inW, float *outW,
           }
           outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = (sum / kW / kH);
         } // W
-      }   // H
-    }     // C
-  }       // N
+      } // H
+    } // C
+  } // N
 #undef START_IND
 #undef END_IND
 }
@@ -2990,9 +2990,9 @@ void libjit_avg_pool_grad_f(float *inG, const float *outG, const dim_t *inGdims,
             }
           }
         } // W
-      }   // H
-    }     // C
-  }       // N
+      } // H
+    } // C
+  } // N
 }
 
 int8_t libjit_element_quantize_kernel_i8(dim_t idx, const float *inW,

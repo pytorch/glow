@@ -217,8 +217,8 @@ bool NNPIDeviceTracing::addTrace(
              entry.params["engine"] != "HW") {
     // Notifies only software events that are incomplete since HW events are
     // much more likely to be lost.
-    LOG(WARNING) << "[INCOMPLETE EVENT] "
-                 << " event key:" << eventKey << " state:" << state
+    LOG(WARNING) << "[INCOMPLETE EVENT] " << " event key:" << eventKey
+                 << " state:" << state
                  << " inflight: " << (inflight.count(eventKey) > 0)
                  << " time: " << entry.hostTime;
   }

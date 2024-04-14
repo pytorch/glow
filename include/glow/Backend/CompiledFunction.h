@@ -45,7 +45,7 @@ public:
   runtime::RuntimeBundle &getRuntimeBundle() { return runtimeBundle_; }
 
   /// Collects constants for runtime.
-  virtual void collectConstants(const Module *){};
+  virtual void collectConstants(const Module *) {};
 
   /// Setter for TraceEvent lookup. Note: does not enable tracing automatically.
   void setTraceInfo(TraceInfo &&info) { traceInfo_ = std::move(info); }
@@ -63,7 +63,7 @@ public:
   /// Once the compiledFunction is done being added to devices calling this
   /// method will free any resources needed to load the network on the device
   /// but not needed for running on the device.
-  virtual void freeCompilationResources(){};
+  virtual void freeCompilationResources() {};
 
   /// \returns a JSON representation of the result of compilation. Structure of
   /// the JSON is dependent on the backend.

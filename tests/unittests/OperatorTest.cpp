@@ -11943,8 +11943,8 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // W
-    }   // H
-  }     // T
+    } // H
+  } // T
 
   auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 1},
                                         "filter", false);
@@ -11982,8 +11982,8 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
       for (dim_t k = 2; k < 6; k++) {
         IH1.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // W
-    }   // H
-  }     // T
+    } // H
+  } // T
 
   Function *refF = mod_.createFunction("mainRef");
   CN = refF->createConv3D("Conv3D_1", input1, filter, zeroBias, outTy,
@@ -13325,8 +13325,8 @@ TEST_P(OperatorTest, NonCubicKernelConv3D) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // D
-    }   // W
-  }     // H
+    } // W
+  } // H
 
   auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
                                         "filter", false);
@@ -13337,8 +13337,8 @@ TEST_P(OperatorTest, NonCubicKernelConv3D) {
       for (dim_t k = 0; k < 3; k++) {
         FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // D
-    }   // W
-  }     // H
+    } // W
+  } // H
 
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
@@ -13379,8 +13379,8 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // D
-    }   // W
-  }     // H
+    } // W
+  } // H
 
   auto qInType = mod_.uniqueType(ElemKind::Int16QTy, {1, 4, 4, 4, 1}, 0.1, 0);
   QuantizeNode *qInput = F_->createQuantize("q_input", input, qInType);
@@ -13394,8 +13394,8 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
       for (dim_t k = 0; k < 3; k++) {
         FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // D
-    }   // W
-  }     // H
+    } // W
+  } // H
 
   auto qFilterType =
       mod_.uniqueType(ElemKind::Int16QTy, {1, 1, 2, 3, 1}, 0.1, 0);
@@ -13750,8 +13750,8 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // W
-    }   // H
-  }     // T
+    } // H
+  } // T
 
   auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2, 1},
                                         "filter", false);
@@ -13762,8 +13762,8 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
       for (dim_t k = 0; k < 2; k++) {
         FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
       } // W
-    }   // H
-  }     // T
+    } // H
+  } // T
 
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);

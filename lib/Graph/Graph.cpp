@@ -422,8 +422,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
     // Print a Function descriptor that looks like this:
     // vNNNN [ label = "{...}" ];
     os << uniqueVertexName(F) << "[\n"
-       << "\tlabel = \"Function\\l"
-       << "name : " << F->getName().str() << "\\l"
+       << "\tlabel = \"Function\\l" << "name : " << F->getName().str() << "\\l"
        << "node count : " << F->getNodes().size() << "\"\n"
        << "\tshape = box\n"
        << "\tfillcolor=gray89, style=\"filled,rounded\"\n"

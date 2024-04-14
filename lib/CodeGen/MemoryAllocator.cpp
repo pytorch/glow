@@ -104,9 +104,9 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
     }
     auto curHandle = getHandle(it->begin);
     if (mustNotEvict.count(curHandle)) {
-      DEBUG_GLOW(llvm::dbgs()
-                 << "Cannot evict a buffer from '" << name_ << "' : "
-                 << "address: " << it->begin << " size: " << size << "\n");
+      DEBUG_GLOW(llvm::dbgs() << "Cannot evict a buffer from '" << name_
+                              << "' : " << "address: " << it->begin
+                              << " size: " << size << "\n");
       // The block cannot be evicted. Start looking after it.
       begin = it->end;
       evictionCandidates.clear();
@@ -129,8 +129,8 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
       auto &curHandle = candidate.second;
       auto &segment = candidate.first;
       (void)segment;
-      DEBUG_GLOW(llvm::dbgs() << "Evict a buffer from the '" << name_ << "': "
-                              << "address: " << segment.begin
+      DEBUG_GLOW(llvm::dbgs() << "Evict a buffer from the '" << name_
+                              << "': " << "address: " << segment.begin
                               << " size: " << segment.size() << "\n");
       deallocate(curHandle);
       evicted.emplace_back(curHandle);

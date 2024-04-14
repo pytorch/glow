@@ -169,8 +169,7 @@ Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
     NNPIDeviceNetworkConfig *pCfg = nullptr;
     if (!isEmptyDeviceNetworkConfig(cfg)) {
       pCfg = &cfg;
-      LOG(INFO) << "DeviceNetwork PnP: "
-                << "\n";
+      LOG(INFO) << "DeviceNetwork PnP: " << "\n";
       LOG(INFO) << "  Ring: " << cfg.pnpHints.ringFrequencyPrio << "\n";
       LOG(INFO) << "  ICEBO 0: " << cfg.pnpHints.iceBOFrequencyPrio[0] << "\n";
       LOG(INFO) << "  ICEBO 1: " << cfg.pnpHints.iceBOFrequencyPrio[1] << "\n";
@@ -349,8 +348,7 @@ InferencePoolEnv::createDetachedInferenceContext(PlaceholderUsageMap &phUsage) {
       label << "<" << input << ">" << input << "|";
     }
     label.seekp(-1, label.cur); // remove the trailing '|'
-    label << "}|{"
-          << "Function\\lname : " << functionName_ << "}|{";
+    label << "}|{" << "Function\\lname : " << functionName_ << "}|{";
     for (auto output : nnpiCompiledFunction_->getOutputNames()) {
       label << "<" << output << ">" << output << "|";
     }

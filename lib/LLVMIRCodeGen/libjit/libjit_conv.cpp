@@ -40,8 +40,8 @@ void libjit_conv_init_output_with_bias(dim_t N, float *outW, const float *biasW,
         auto outIdx = libjit_getXYZW(outWdims, N, ax, ay, d);
         outW[outIdx] = bias;
       } // For each depth in the output.
-    }   // For each Y in the output.
-  }     // For each X in the output.
+    } // For each Y in the output.
+  } // For each X in the output.
 }
 
 /// Generic template for quantized conv2d. The template allows choosing
@@ -140,10 +140,10 @@ void libjit_quantized_conv2d_generic(
                   libjit_clip_i8(scaledSum);
             }
           } // W
-        }   // H
-      }     // C
-    }       // G
-  }         // N
+        } // H
+      } // C
+    } // G
+  } // N
 }
 
 /// Generic template for channelwise quantized conv2d. The template allows
@@ -232,10 +232,10 @@ void libjit_channelwise_quantized_conv2d_generic(
             outW[libjit_getXYZW(outWdims, n, ax, ay, d)] =
                 libjit_clip_i8(scaledSum);
           } // W
-        }   // H
-      }     // C
-    }       // G
-  }         // N
+        } // H
+      } // C
+    } // G
+  } // N
 }
 
 /// Generic template for channelwise quantized conv3d. The template allows
@@ -341,11 +341,11 @@ void libjit_channelwise_quantized_conv3d_generic(
               outW[libjit_getXYZWQ(outWdims, n, at, ax, ay, d)] =
                   libjit_clip_i8(scaledSum);
             } // W
-          }   // H
-        }     // T
-      }       // C
-    }         // G
-  }           // N
+          } // H
+        } // T
+      } // C
+    } // G
+  } // N
 }
 } // namespace
 
@@ -486,11 +486,11 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
                 }
               }
             } // For each Y in the filter.
-          }   // For each X in the filter.
-        }     // For each D (the depth, or the output channel).
-      }       // For each block in the input channel.
-    }         // For each group in the input channel.
-  }           // For each N, the sample in the batch.
+          } // For each X in the filter.
+        } // For each D (the depth, or the output channel).
+      } // For each block in the input channel.
+    } // For each group in the input channel.
+  } // For each N, the sample in the batch.
 }
 
 void libjit_conv2d_i8_i32(
@@ -649,10 +649,10 @@ void libjit_conv_transpose_f(float *outW, const float *inW,
               }
             }
           } // W
-        }   // H
-      }     // C
-    }       // G
-  }         // N
+        } // H
+      } // C
+    } // G
+  } // N
 }
 
 void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
@@ -714,9 +714,9 @@ void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
 
             biasG[d] += grad;
           } // W
-        }   // H
-      }     // C
-    }       // G
-  }         // N
+        } // H
+      } // C
+    } // G
+  } // N
 }
 }

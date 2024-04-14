@@ -39,8 +39,8 @@ bool PassManagerOptions::listContainsString(
 /// of the execution due to the way how LLVM's command-line registration
 /// machinery works.
 PassManagerOptions::PassManagerOptions(const char *id)
-    : passManagerID(id), passManagerCat{staticStrFormat(
-                             "%s Pass Manager Options", id)},
+    : passManagerID(id),
+      passManagerCat{staticStrFormat("%s Pass Manager Options", id)},
       verifyBeforeAllPassesOpt{
           llvm::StringRef(staticStrFormat("verify-before-all-%s-passes", id)),
           llvm::cl::desc("Verify the IR before all passes."),

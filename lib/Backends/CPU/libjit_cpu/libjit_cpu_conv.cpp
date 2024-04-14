@@ -40,8 +40,8 @@ void libjit_conv_init_output_with_bias(dim_t N, float *outW, const float *biasW,
         auto outIdx = libjit_getXYZW(outWdims, N, ax, ay, d);
         outW[outIdx] = bias;
       } // For each depth in the output.
-    }   // For each Y in the output.
-  }     // For each X in the output.
+    } // For each Y in the output.
+  } // For each X in the output.
 }
 
 /// Perform the heart of the convolution. Load \p ywidth scalars in a specific
@@ -196,8 +196,8 @@ void libjit_convDKKC8_foreach_xy_filter_pixels(
         } // For each Y, in step of 1, in the output.
 
       } // For each X in the output.
-    }   // For each Y in the filter.
-  }     // For each X in the filter.
+    } // For each Y in the filter.
+  } // For each X in the filter.
 }
 
 // Process the input buffer in the convolution by iterating on the input buffer
@@ -245,9 +245,9 @@ void libjit_convDKKC8_foreach_xy_pixels_filter(
             outC += numDepthRegs * 8;
           }
         } // For each Y in the filter.
-      }   // For each X in the filter.
-    }     // For each Y in the output.
-  }       // For each X in the output.
+      } // For each X in the filter.
+    } // For each Y in the output.
+  } // For each X in the output.
 }
 
 } // namespace
@@ -293,8 +293,8 @@ void libjit_convDKKC8_f(float *outW, const float *inW, const float *filterW,
                       endChannelIndex);
 
       } // For each D (the depth, or the output channel).
-    }   // for each G, the group
-  }     // For each N, the sample in the batch.
+    } // for each G, the group
+  } // For each N, the sample in the batch.
 }
 
 } // extern "C"
