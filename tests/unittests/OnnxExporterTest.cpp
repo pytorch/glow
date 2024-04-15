@@ -1114,7 +1114,9 @@ TEST(exporter, TestUniqueOffsetMapSerialization) {
   PlaceholderBindings bindings;
   bindings.allocate({I, output});
 
+  // clang-format off
 #define GET_TQP(T_) TensorQuantizationParams{T_->getScale(), T_->getOffset()}
+  // clang-format on
   OriginNameToTQPMap originNameToTQPMap;
   originNameToTQPMap.emplace(W->getName(), GET_TQP(W->getOutput().getType()));
   originNameToTQPMap.emplace(B->getName(), GET_TQP(B->getOutput().getType()));
