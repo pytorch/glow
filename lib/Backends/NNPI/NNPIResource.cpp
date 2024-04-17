@@ -255,7 +255,7 @@ bool NNPIResource::init(const NNPIObjectName name,
   // Create device resource.
   bool allocateDeviceResource = false;
 
-  shared_ptr<NNPIResource> sharedResource = nullptr;
+  std::shared_ptr<NNPIResource> sharedResource = nullptr;
   if (phUsage) {
     sharedResource = findResourceForDevice(*users, device_);
   }

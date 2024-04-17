@@ -22,8 +22,6 @@
 #include <string>
 #include <vector>
 
-using namespace std;
-
 enum NNPIAVXType { NNPI_AVX_NONE = 0, NNPI_AVX_AVX512 };
 
 inline void convertI64toI32(int64_t const *i64Data, int32_t *i32Data,
