@@ -47,7 +47,7 @@ void DotWriter::clear() {
 
 void DotWriter::addNode(std::string name, std::string label, unsigned color,
                         std::string subGraph) {
-  ostringstream os;
+  std::ostringstream os;
   os << name << " [\n";
   os << "\tlabel = \"" << label << "\"\n";
   os << "\tstyle=\"filled,rounded\"\n";
