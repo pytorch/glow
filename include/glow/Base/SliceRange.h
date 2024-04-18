@@ -24,11 +24,6 @@
 #include <unordered_set>
 #include <vector>
 
-using namespace glow;
-using llvm::cast;
-using llvm::dyn_cast;
-using llvm::isa;
-
 namespace glow {
 
 /// Dimension range representing a contiguous [start, stop) index interval with
