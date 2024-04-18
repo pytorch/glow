@@ -49,8 +49,8 @@ TEST(TestSplitNodeOption, CheckLLVMStyleRTTI) {
             SplitNodeOption::SplitNodeKind::SplitNodeByChunkWeights);
   std::vector<SplitNodeOption *> orthogonalOpts = {&opt1, &opt2, &opt3, &opt4};
   for (auto opt : orthogonalOpts) {
-    EXPECT_NE(nullptr, dyn_cast<SplitNodeOptionOrthogonal>(opt));
-    EXPECT_EQ(nullptr, dyn_cast<SplitNodeBySliceRanges>(opt));
+    EXPECT_NE(nullptr, llvm::dyn_cast<SplitNodeOptionOrthogonal>(opt));
+    EXPECT_EQ(nullptr, llvm::dyn_cast<SplitNodeBySliceRanges>(opt));
   }
   // Check non-orthogonal options.
   std::vector<SliceRange> sliceRanges = {SliceRange({{0, 1}})};
@@ -58,8 +58,9 @@ TEST(TestSplitNodeOption, CheckLLVMStyleRTTI) {
   EXPECT_EQ(opt5.getKind(),
             SplitNodeOption::SplitNodeKind::SplitNodeBySliceRanges);
   SplitNodeOption *nonOrthogonalOpt = &opt5;
-  EXPECT_EQ(nullptr, dyn_cast<SplitNodeOptionOrthogonal>(nonOrthogonalOpt));
-  EXPECT_NE(nullptr, dyn_cast<SplitNodeBySliceRanges>(nonOrthogonalOpt));
+  EXPECT_EQ(nullptr,
+            llvm::dyn_cast<SplitNodeOptionOrthogonal>(nonOrthogonalOpt));
+  EXPECT_NE(nullptr, llvm::dyn_cast<SplitNodeBySliceRanges>(nonOrthogonalOpt));
 }
 
 /// Test for SplitNodeByNumChunks option.
