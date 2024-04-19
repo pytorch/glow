@@ -6,8 +6,9 @@ from contextlib import contextmanager
 from enum import Enum
 from typing import Any, Iterable, List, Mapping, Optional, Tuple, Union
 
+import glow.fb.torch_glow.py.FBA.torch_glow as torch_glow
+
 import torch
-import torch_glow
 
 __all__ = [
     "to_glow",
