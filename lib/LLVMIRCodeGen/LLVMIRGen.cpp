@@ -795,7 +795,7 @@ static std::string createName(const std::string &name, ElemKind elemTy) {
 void LLVMIRGen::initLLVMFunctionNameToMangledNameMap() {
   CHECK(llvmFunctionNameToMangledName_.empty());
   constexpr size_t maxFnBaseNameLen = 4096;
-  char *fnNameBuf = static_cast<char *>(std::malloc(maxFnBaseNameLen));
+  char fnNameBuf[maxFnBaseNameLen];
   // Build a map from names to the list of matching mangled names.
   for (llvm::Function &F : getModule()) {
     auto mangledName = F.getName().str();
@@ -805,6 +805,17 @@ void LLVMIRGen::initLLVMFunctionNameToMangledNameMap() {
       continue;
     }
     size_t fnNameLen = maxFnBaseNameLen;
+    size_t fnContextLen = maxFnBaseNameLen;
+    // Skip C++ functions that have names like a::b::c. It helps to avoid name
+    // conflicts with kernels that may be called just c and conflict with C++
+    // functions.
+    fnNameBuf[0] = '\0';
+    char *contextNamePtr =
+        Mangler.getFunctionDeclContextName(fnNameBuf, &fnContextLen);
+    if (contextNamePtr && fnContextLen != 0 && contextNamePtr[0]) {
+      continue;
+    }
+    fnNameBuf[0] = '\0';
     char *demangledNamePtr = Mangler.getFunctionBaseName(fnNameBuf, &fnNameLen);
     if (!demangledNamePtr || fnNameLen == 0) {
       continue;
@@ -816,10 +827,6 @@ void LLVMIRGen::initLLVMFunctionNameToMangledNameMap() {
       llvmFunctionNameToMangledName_.insert({demangledFnName, {}});
     }
     llvmFunctionNameToMangledName_[demangledFnName].push_back(mangledName);
-  }
-  // Free up the memory.
-  if (fnNameBuf) {
-    free(fnNameBuf);
   }
   DEBUG_GLOW({
     // Dump the map for debugging purposes.
