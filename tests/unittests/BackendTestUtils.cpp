@@ -365,7 +365,7 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
     // Clone the clone, and then add all the new nodes to the original function.
     auto *tmpF = cloneF->clone("tmp" + std::to_string(i));
     std::unordered_set<Node *> clonedNodes;
-    bool foundSaveNode = false;
+    [[maybe_unused]] bool foundSaveNode = false;
     for (auto &N : tmpF->getNodes()) {
       clonedNodes.insert(&N);
 
