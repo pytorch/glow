@@ -176,7 +176,6 @@ int main(int argc, char **argv) {
   std::atomic<size_t> returned{0};
 
   // Run up to maxImages classifications.
-  unsigned int currDevice{0};
   while (started++ < maxImages) {
     if (code.value() != 0 || dirIt == llvm::sys::fs::directory_iterator()) {
       started--;
@@ -207,7 +206,6 @@ int main(int argc, char **argv) {
                      returned, finished);
 
     dirIt.increment(code);
-    currDevice++;
   }
 
   finished.get_future().wait();
