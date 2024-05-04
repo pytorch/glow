@@ -1383,12 +1383,9 @@ static void convertWithoutClipAfterFp16ConvertTo(
   convertFunctionToFloat16(F, precConfig);
 
   int numClips = 0;
-  int numConvertTos = 0;
   for (auto &n : F->getNodes()) {
     if (n.getKind() == Kinded::Kind::ClipNodeKind) {
       ++numClips;
-    } else if (n.getKind() == Kinded::Kind::ConvertToNodeKind) {
-      ++numConvertTos;
     }
   }
 
