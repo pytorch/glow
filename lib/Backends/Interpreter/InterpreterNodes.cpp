@@ -6695,7 +6695,7 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsImpl(
     const auto placement = weightsPlacementH.raw(t);
     assert(placement != WeightsPlacement::DEVICE);
     auto weightsH = uvmWeightsH;
-    auto maxWeightsBytes = maxUvmWeightsBytes;
+    [[maybe_unused]] auto maxWeightsBytes = maxUvmWeightsBytes;
     if (placement == WeightsPlacement::HOST) {
       weightsH = devWeightsH;
       maxWeightsBytes = maxDevWeightsBytes;
