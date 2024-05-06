@@ -175,7 +175,8 @@ class FunctionSpecializer {
       // The specialized function only takes non-specialized parameters from the
       // original function call. Check that the types of these parameters are
       // the same for the original and the specialized function.
-      for (size_t argIdx = 0, specializedFnArgIdx = 0, e = F->arg_size();
+      for ([[maybe_unused]] size_t argIdx = 0, specializedFnArgIdx = 0,
+                                   e = F->arg_size();
            argIdx < e; ++argIdx) {
         // If the parameter is specialized, it is not present in the specialized
         // function.
