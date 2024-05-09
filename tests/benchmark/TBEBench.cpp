@@ -148,7 +148,6 @@ public:
     for (size_t layer = 0; layer < param.numTBENodes_; layer++) {
 
       // size_t totalLengthsSum = 0;
-      size_t totalNumLengths = 0;
 
       // Create placeholders for weights
       auto *weights =
@@ -273,7 +272,6 @@ public:
             }
             offsetsHandle.raw(j) = lengthsSum;
             lengthsSum += nextLength;
-            totalNumLengths += 1;
           }
           // totalLengthsSum += lengthsSum;
           offsetsHandle.raw(lengthsHandle.size()) = lengthsSum;
@@ -317,7 +315,6 @@ public:
             }
             offsetsHandle.raw(j) = lengthsSum;
             lengthsSum += nextLength;
-            totalNumLengths += 1;
           }
           // totalLengthsSum += lengthsSum;
           offsetsHandle.raw(lengthsHandle.size()) = lengthsSum;
