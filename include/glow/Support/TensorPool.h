@@ -17,11 +17,11 @@
 #define GLOW_TENSORPOOL_H
 
 #include "glow/Base/Tensor.h"
-#include "llvm/ADT/Optional.h"
 
 #include <atomic>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -74,7 +74,7 @@ public:
   /// previously been added by initialize. If the pool is empty this will
   /// allocate a new Tensor unless preventAllocs was set true at construction
   /// time.
-  llvm::Optional<Tensor> get(TypeRef ty);
+  std::optional<Tensor> get(TypeRef ty);
 
   /// Return a Tensor \p t to the pool. This Tensor must have been previously
   /// allocated by this TensorPool.

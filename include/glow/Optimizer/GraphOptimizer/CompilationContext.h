@@ -21,6 +21,8 @@
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Error.h"
 
+#include <optional>
+
 namespace glow {
 namespace runtime {
 struct PartitionConfig;
@@ -273,7 +275,7 @@ struct OptimizationOptions {
   /// If it is true (false), perform (not perform) ASAP op placement in DAG
   /// optimization; If it is not set, use acc perf GFlag APLASAPPlacement to
   /// determine whether to perform ASAP op placement or not
-  llvm::Optional<bool> enableAPLASAPPlacement;
+  std::optional<bool> enableAPLASAPPlacement;
 
   /// If true does int64 to int32 type demotion if backend supports for specific
   /// nodes.
@@ -311,8 +313,8 @@ struct OptimizationOptions {
     PRINT_VALUE(foldElemKindConversionIntoIO, dump_str)
     PRINT_VALUE(foldStaticPlaceholderConversions, dump_str)
     PRINT_VALUE(useSparseNNPartitioningScheme, dump_str)
-    if (enableAPLASAPPlacement.hasValue()) {
-      PRINT_VALUE(enableAPLASAPPlacement.getValue(), dump_str)
+    if (enableAPLASAPPlacement) {
+      PRINT_VALUE(enableAPLASAPPlacement.value(), dump_str)
     }
     PRINT_VALUE(enableTypeDemotion, dump_str)
     PRINT_VALUE(enableQuantParamChanges, dump_str)

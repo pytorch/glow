@@ -99,8 +99,8 @@ static std::mutex initTargetMutex;
 
 void LLVMIRGen::initTargetOptions(llvm::TargetOptions &targetOpts,
                                   const LLVMBackendOptions &backendOpts) {
-  if (backendOpts.getFloatABI().hasValue()) {
-    targetOpts.FloatABIType = backendOpts.getFloatABI().getValue();
+  if (backendOpts.getFloatABI().has_value()) {
+    targetOpts.FloatABIType = backendOpts.getFloatABI().value();
   }
   if (!backendOpts.getABIName().empty()) {
     targetOpts.MCOptions.ABIName = backendOpts.getABIName();

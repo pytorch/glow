@@ -901,7 +901,7 @@ Error HostManager::runNetworkBlocking(
 }
 
 void HostManager::dispatchNextRun() {
-  llvm::Optional<InferRequest> pRequest;
+  std::optional<InferRequest> pRequest;
   std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
   {
     // hmm this lock is hot but I still have it as a unique lock because
@@ -921,8 +921,8 @@ void HostManager::dispatchNextRun() {
     }
   }
 
-  assert(pRequest.hasValue());
-  InferRequest request = std::move(pRequest.getValue());
+  assert(pRequest.has_value());
+  InferRequest request = std::move(pRequest.value());
   auto startTime = TraceEvent::now();
   auto requestReceived = request.startTime;
   executor_->run(

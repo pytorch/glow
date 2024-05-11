@@ -16,9 +16,11 @@
 
 #include "glow/Support/TensorPool.h"
 
+#include <optional>
+
 namespace glow {
 
-llvm::Optional<Tensor> TensorPool::get(TypeRef ty) {
+std::optional<Tensor> TensorPool::get(TypeRef ty) {
   stats_.totalGets++;
 
   std::unique_lock<std::mutex> l(lock_);
@@ -27,7 +29,7 @@ llvm::Optional<Tensor> TensorPool::get(TypeRef ty) {
 
   if (it == pools_.end()) {
     if (preventInlineAllocs_) {
-      return llvm::Optional<Tensor>();
+      return std::nullopt;
     }
 
     stats_.totalTypes++;
@@ -36,7 +38,7 @@ llvm::Optional<Tensor> TensorPool::get(TypeRef ty) {
 
   if (it->second.empty()) {
     if (preventInlineAllocs_) {
-      return llvm::Optional<Tensor>();
+      return std::nullopt;
     }
 
     // Don't need to alloc under the lock.

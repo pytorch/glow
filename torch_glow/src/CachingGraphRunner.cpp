@@ -913,13 +913,13 @@ CachingGraphRunner::convertPyTorchInputToGlowInput(
     // For backends that does not support partial tensor, last-element padding
     // based on size
     auto inputTensorOpt = tensorPool_.get(ty);
-    if (!inputTensorOpt.hasValue()) {
+    if (!inputTensorOpt) {
       std::stringstream ss;
       ss << "Tensorpool tensor not found for input " << ptTensor.name();
       return MAKE_ERR(ss.str());
     }
     // We want fresh DeviceResidencyInfo for this fresh Tensor.
-    glow::Tensor inputTensor(std::move(inputTensorOpt.getValue()));
+    glow::Tensor inputTensor(std::move(inputTensorOpt.value()));
     inputTensor.resetDeviceInfo();
     if (ptTensor.data_ptr()) {
       auto *inTensorPtr = inputTensor.getUnsafePtr();
