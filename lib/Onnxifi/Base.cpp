@@ -347,15 +347,14 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
       continue;
     }
 
-    llvm::Optional<Tensor> inputTensorOpt = tensorPool_.get(inPhPtr->getType());
-    if (!inputTensorOpt.hasValue()) {
+    std::optional<Tensor> inputTensorOpt = tensorPool_.get(inPhPtr->getType());
+    if (!inputTensorOpt.has_value()) {
       DLOG(FATAL) << "Tensorpool tensor not found for input "
                   << inOnnxTensor.name;
       return ONNXIFI_STATUS_INTERNAL_ERROR;
     }
     // We want fresh DeviceResidencyInfo for this fresh Tensor.
-    externalIOBindings.emplace_back(inPhPtr,
-                                    std::move(inputTensorOpt.getValue()));
+    externalIOBindings.emplace_back(inPhPtr, std::move(inputTensorOpt.value()));
     Tensor &inputTensor = externalIOBindings.back().second;
     inputTensor.resetDeviceInfo();
 

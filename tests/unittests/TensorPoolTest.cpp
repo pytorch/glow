@@ -31,7 +31,7 @@ TEST(TensorPool, BasicTest) {
   Type ty(ElemKind::FloatTy, {1, 2, 3});
   pool.reserve(&ty, 1);
 
-  Tensor T = std::move(pool.get(&ty).getValue());
+  Tensor T = std::move(pool.get(&ty).value());
   EXPECT_TRUE(T.getType().isEqual(ty));
   EXPECT_EQ(T.dims(), ty.dims());
 
@@ -52,12 +52,12 @@ TEST(TensorPool, ReclaimAndGet) {
   Type ty(ElemKind::FloatTy, {1, 2, 3});
   pool.reserve(&ty, 1);
 
-  Tensor T = std::move(pool.get(&ty).getValue());
+  Tensor T = std::move(pool.get(&ty).value());
   auto *backingPtr = T.getUnsafePtr();
 
   pool.reclaim(std::move(T));
 
-  Tensor T2 = std::move(pool.get(&ty).getValue());
+  Tensor T2 = std::move(pool.get(&ty).value());
   // They are the same buffer.
   EXPECT_EQ(T2.getUnsafePtr(), backingPtr);
 
@@ -78,8 +78,8 @@ TEST(TensorPool, Extends) {
   Type ty(ElemKind::FloatTy, {1, 2, 3});
   pool.reserve(&ty, 1);
 
-  Tensor T = std::move(pool.get(&ty).getValue());
-  Tensor T2 = std::move(pool.get(&ty).getValue());
+  Tensor T = std::move(pool.get(&ty).value());
+  Tensor T2 = std::move(pool.get(&ty).value());
   EXPECT_TRUE(T.getType().isEqual(T2.getType()));
   EXPECT_TRUE(T.getType().isEqual(ty));
   EXPECT_TRUE(T2.getType().isEqual(ty));
@@ -105,15 +105,15 @@ TEST(TensorPool, DoesntExtend) {
   Type ty(ElemKind::FloatTy, {1, 2, 3});
   pool.reserve(&ty, 1);
 
-  Tensor T = std::move(pool.get(&ty).getValue());
+  Tensor T = std::move(pool.get(&ty).value());
   Type Tt = T.getType();
 
   auto T2opt = pool.get(&ty);
-  EXPECT_FALSE(T2opt.hasValue());
+  EXPECT_FALSE(T2opt.has_value());
 
   pool.reclaim(std::move(T));
 
-  T = std::move(pool.get(&ty).getValue());
+  T = std::move(pool.get(&ty).value());
   EXPECT_EQ(Tt, T.getType());
 
   const auto &stats = pool.getStats();
@@ -132,8 +132,8 @@ TEST(TensorPool, Noreserve) {
   TensorPool pool;
   Type ty(ElemKind::FloatTy, {1, 2, 3});
 
-  Tensor T = std::move(pool.get(&ty).getValue());
-  Tensor T2 = std::move(pool.get(&ty).getValue());
+  Tensor T = std::move(pool.get(&ty).value());
+  Tensor T2 = std::move(pool.get(&ty).value());
 
   EXPECT_TRUE(T.getType().isEqual(T2.getType()));
 
@@ -162,8 +162,8 @@ TEST(TensorPool, MultipleTypes) {
   std::vector<Tensor> tensors;
   // Ten total allocs.
   for (int i = 0; i < 5; ++i) {
-    Tensor T = std::move(pool.get(&ty).getValue());
-    Tensor T2 = std::move(pool.get(&ty2).getValue());
+    Tensor T = std::move(pool.get(&ty).value());
+    Tensor T2 = std::move(pool.get(&ty2).value());
     EXPECT_FALSE(T.getType().isEqual(T2.getType()));
     EXPECT_TRUE(T.getType().isEqual(ty));
     EXPECT_TRUE(T2.getType().isEqual(ty2));
@@ -200,14 +200,14 @@ TEST(TensorPool, MultipleTypesReclaim) {
   pool.reserve(&ty, 1);
   pool.reserve(&ty2, 1);
 
-  Tensor T = std::move(pool.get(&ty).getValue());
-  Tensor T2 = std::move(pool.get(&ty2).getValue());
+  Tensor T = std::move(pool.get(&ty).value());
+  Tensor T2 = std::move(pool.get(&ty2).value());
 
   pool.reclaim(std::move(T));
   pool.reclaim(std::move(T2));
 
-  T = std::move(pool.get(&ty).getValue());
-  T2 = std::move(pool.get(&ty2).getValue());
+  T = std::move(pool.get(&ty).value());
+  T2 = std::move(pool.get(&ty2).value());
 
   pool.reclaim(std::move(T));
   pool.reclaim(std::move(T2));
@@ -231,7 +231,7 @@ TEST(TensorPool, PlaceholderBindingsReclaim) {
   Module mod;
 
   auto *PH = mod.createPlaceholder(&ty, "test", false);
-  bindings.insert(PH, std::move(pool.get(&ty).getValue()));
+  bindings.insert(PH, std::move(pool.get(&ty).value()));
 
   /// Insert a non managed tensor.
   auto *PH2 = mod.createPlaceholder(&ty, "test2", false);
@@ -249,7 +249,7 @@ TEST(TensorPool, PlaceholderBindingsReclaim) {
   EXPECT_EQ(stats.totalGets, 1);
   EXPECT_EQ(stats.totalReclaims, 1);
 
-  bindings.insert(PH, std::move(pool.get(&ty).getValue()));
+  bindings.insert(PH, std::move(pool.get(&ty).value()));
 
   bindings.erase(PH);
   const auto &stats2 = pool.getStats();
@@ -263,7 +263,7 @@ TEST(TensorPool, Clear) {
   TensorPool pool;
   Type ty(ElemKind::FloatTy, {1, 2, 3});
 
-  Tensor T = std::move(pool.get(&ty).getValue());
+  Tensor T = std::move(pool.get(&ty).value());
   pool.reclaim(std::move(T));
 
   const auto &stats = pool.getStats();
@@ -277,7 +277,7 @@ TEST(TensorPool, Clear) {
 
   pool.clear();
 
-  T = std::move(pool.get(&ty).getValue());
+  T = std::move(pool.get(&ty).value());
   pool.reclaim(std::move(T));
 
   const auto &stats2 = pool.getStats();

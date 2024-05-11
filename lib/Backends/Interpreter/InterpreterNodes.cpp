@@ -1476,7 +1476,7 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
   ShapeHW kdim(kernelSizes);
   ShapeHW sdim(strides);
 
-  llvm::Optional<Handle<int64_t>> argmaxH;
+  std::optional<Handle<int64_t>> argmaxH;
   if (argmaxW) {
     argmaxH = argmaxW->getHandle<int64_t>();
   }
@@ -6678,7 +6678,7 @@ void BoundInterpreterFunction::fwdIntNBitSplitEmbeddingWeightedBagsImpl(
   auto weightsTysH = weightsTys->getHandle<uint8_t>();
   auto dimOffsetsH = dimOffsets->getHandle<int32_t>();
   auto weightsOffsetsH = weightsOffsets->getHandle<WeightsOffsetTy>();
-  llvm::Optional<Handle<IndiceWeightTy>> indiceWeightsH;
+  std::optional<Handle<IndiceWeightTy>> indiceWeightsH;
   if (indiceWeights) {
     indiceWeightsH = indiceWeights->getHandle<IndiceWeightTy>();
   }

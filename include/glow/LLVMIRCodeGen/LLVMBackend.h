@@ -44,7 +44,7 @@ class LLVMBackendOptions {
   /// ABI to be used by this backend.
   std::string abi_;
   /// Float ABI to be used by this backend.
-  llvm::Optional<llvm::FloatABI::ABIType> floatABI_;
+  std::optional<llvm::FloatABI::ABIType> floatABI_;
   /// Code model used by this backend.
   llvm::CodeModel::Model codeModel_;
   /// Code model used by this backend for bundles.
@@ -75,11 +75,11 @@ public:
   /// Sets ABI used by this backend.
   void setABIName(llvm::StringRef abi) { abi_ = abi.str(); }
   /// \returns Float ABI used by this backend.
-  llvm::Optional<llvm::FloatABI::ABIType> getFloatABI() const {
+  std::optional<llvm::FloatABI::ABIType> getFloatABI() const {
     return floatABI_;
   }
   /// Sets Float ABI used by this backend.
-  void setFloatABI(llvm::Optional<llvm::FloatABI::ABIType> floatABI) {
+  void setFloatABI(std::optional<llvm::FloatABI::ABIType> floatABI) {
     floatABI_ = floatABI;
   }
   /// \returns code model used by this backend.
