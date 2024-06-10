@@ -3,9 +3,10 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
+import glow.fb.torch_glow.py.NNPI.torch_glow as torch_glow
+
 import torch
 import torch.jit
-import torch_glow
 from glow.glow.torch_glow.tests.tests import utils
 
 
