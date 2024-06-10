@@ -13,12 +13,13 @@ jobs:
   tests:
     uses: pytorch/test-infra/.github/workflows/linux_job.yml@main
     with:
+      docker-image: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
       runner: linux.12xlarge
       repository: pytorch/glow
       timeout: 120
       script: |
         # temporarily get the job green before we complete the migration.
-        exit 0
+
         echo '::group::Setup Environment Variables'
         # Mark Build Directory Safe
         git config --global --add safe.directory /__w/glow/glow
