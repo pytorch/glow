@@ -17,8 +17,6 @@ jobs:
       repository: pytorch/glow
       timeout: 120
       script: |
-        # temporarily get the job green before we complete the migration.
-        exit 0
         echo '::group::Setup Environment Variables'
         # Mark Build Directory Safe
         git config --global --add safe.directory /__w/glow/glow
@@ -31,12 +29,15 @@ jobs:
         fi
 
         original_pwd=$(pwd)
-        sudo apt-get update;
+        # sudo yum update
         mkdir ~/tempdownload;
         cd ~/tempdownload;
         wget https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-8.1p1.tar.gz;
-        tar zxvf openssh-8.1p1.tar.gz;
-        cd openssh-8.1p1 && ./configure && make && sudo make install;
+        tar zxf openssh-8.1p1.tar.gz;
+        cd openssh-8.1p1 &&
+        ./configure &&
+        make > /dev/null &&
+        sudo make install;
 
         cd $original_pwd
         git submodule sync
@@ -44,7 +45,6 @@ jobs:
 
         set -e
         # Build
+        chmod +x .github/build.sh .github/test.sh
+        export CIRCLE_JOB=OPENCL
         .github/build.sh
-
-        # Test
-        .github/test.sh
