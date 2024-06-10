@@ -83,4 +83,7 @@ extern llvm::cl::opt<bool> bundleAPIVerbose;
 /// Option to add other external object files to the bundle.
 extern llvm::cl::list<std::string> bundleObjectsOpt;
 
+/// Option to dump LLVM IR to stdout
+extern llvm::cl::opt<bool> dumpLLVMIR;
+
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H

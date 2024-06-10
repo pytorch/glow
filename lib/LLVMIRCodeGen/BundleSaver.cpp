@@ -529,7 +529,16 @@ void BundleSaver::produceBundle() {
     emitBundleEntryFunction(savedFunction);
   }
   // Finish code generation.
+  if (dumpLLVMIR) {
+    llvm::outs() << "LLVM module before optimizations:\n";
+    irgen_->dump();
+  }
   irgen_->finishCodeGen();
+  if (dumpLLVMIR) {
+    llvm::outs() << "LLVM module after optimizations:\n";
+    irgen_->dump();
+  }
+
   setIRFunction("<noname>", nullptr);
   // Emit symbol table and bundle config only for dynamic API
   if (bundleAPI_ == BundleApiType::Dynamic) {
