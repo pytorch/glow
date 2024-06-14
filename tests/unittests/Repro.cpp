@@ -26,6 +26,7 @@
 #include "glow/Runtime/TraceExporter.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
+#include "infra_asic_fpga/firmware/prototype/lib/fbia_streaming/internals/profile/Tracer.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -1026,6 +1027,16 @@ int run() {
       } else {
         LOG(INFO) << "Trace path=" << glowDumpTraceFile.c_str();
         mergedTraceContext.dump(glowDumpTraceFile);
+      }
+      llvm::SmallString<64> streamTracePath;
+      auto streamTempFileRes = llvm::sys::fs::createTemporaryFile(
+          "glow-stream-trace", "json", streamTracePath);
+      if (streamTempFileRes.value() != 0) {
+        LOG(ERROR)
+            << "Failed to create temp file for Glow stream trace events: "
+            << streamTempFileRes;
+      } else {
+        TRACER_DUMP_CHROME_TRACE(streamTracePath.c_str());
       }
     }
 
