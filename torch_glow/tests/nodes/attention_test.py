@@ -40,7 +40,6 @@ class TestAttention(utils.TorchGlowTestCase):
         inputs = torch.randn(2, 4, 32)
         model = SimpleAttentionModule()
         torch_glow.enable_ignore_div_rounding_args()
-
         utils.compare_tracing_methods(
             model,
             inputs,
