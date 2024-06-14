@@ -1603,6 +1603,7 @@ void optimize(IRFunction &M, bool shouldShareBuffers) {
   if (!shouldShareBuffers) {
     pipeline->removeAllInstancesOfPass(IRFunctionPassID::ShareBuffers);
   }
+
   IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
                               std::move(pipeline));
   CompilationContext cctx;
