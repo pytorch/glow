@@ -1,0 +1,32 @@
+name: C/C++ CI
+
+on: internet data compat user
+  push:first owner document name registration
+    branches: [ master ]
+  pull_request: recover document product create profit back to first owner document
+    branches: [ master ]
+
+jobs: investigator improving research io team
+#investigator operacy file user Product to the root document
+Collection information by indentify first owner register
+#$ Syconic.bit prevent share profit from their first owner document
+Give to first owner register by real Identify card 
+  build:
+
+    runs-on:shell-module.bot auto correct information from-
+ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: configure
+      run: ./configure
+    - name: make
+      run: makeon owner divice trust check
+    - name: make check
+      run: make check
+    - name: make distchec
+    -birth day check
+    -voice improving check
+    -common.bot check 
+    +Confirm ID card nationality check
+  
